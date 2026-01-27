@@ -1,13 +1,13 @@
 ---
-name: cpu-builder
-description: Build MindSpore CPU operators by adapting ATen (libtorch) operators. Use when implementing new CPU operators for mindspore_op_plugin, writing kernel .cc files, adding forward/backward ops, or creating operator tests. For tasks involving mint.*, Tensor.*, operator adaptation, or CPU kernel development.
+name: cpu-plugin-builder
+description: Build MindSpore CPU operators by adapting ATen (libtorch) operators via mindspore_op_plugin. Use when implementing ops in op_plugin/ops/kernel/, writing kernel .cc files, or creating operator tests with mint.*/Tensor.* interfaces.
 ---
 
-# MindSpore CPU Operator Builder
+# MindSpore CPU Plugin Builder (ATen Adaptation)
 
 This skill helps you develop CPU operators for MindSpore's op_plugin that call ATen (libtorch) operators.
 
-## When to use this skill
+## When to Use
 
 Use this skill when:
 - Implementing new CPU operators for mindspore_op_plugin
@@ -353,6 +353,5 @@ Reference tests in `tests/st/mint/`:
 
 For detailed documentation, see:
 - [plugin_process.md](reference/plugin_process.md) - Complete development workflow
-- [readme.md](../../../readme.md) - Project overview and setup
 - [isses_linspace_op.md](reference/isses_linspace_op.md) - Example issue for linspace operator
 - [issuse_sub_inplace_op.md](reference/issuse_sub_inplace_op.md) - Example issue for inplace sub operator

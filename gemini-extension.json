@@ -1,0 +1,42 @@
+{
+  "name": "mindspore-skills",
+  "description": "MindSpore operator development and model migration skills",
+  "version": "1.1.0",
+  "skills": [
+    {
+      "name": "cpu-plugin-builder",
+      "description": "Build CPU operators via ATen/libtorch adaptation",
+      "path": "skills/cpu-plugin-builder/SKILL.md"
+    },
+    {
+      "name": "cpu-native-builder",
+      "description": "Build native CPU kernels with Eigen/SLEEF",
+      "path": "skills/cpu-native-builder/SKILL.md"
+    },
+    {
+      "name": "gpu-builder",
+      "description": "Build GPU operators with CUDA",
+      "path": "skills/gpu-builder/SKILL.md"
+    },
+    {
+      "name": "npu-builder",
+      "description": "Build NPU operators for Huawei Ascend",
+      "path": "skills/npu-builder/SKILL.md"
+    },
+    {
+      "name": "hf-diffusers-migrate",
+      "description": "Migrate HF diffusers models to mindone.diffusers",
+      "path": "skills/hf-diffusers-migrate/SKILL.md"
+    },
+    {
+      "name": "hf-transformers-migrate",
+      "description": "Migrate HF transformers models to mindone.transformers",
+      "path": "skills/hf-transformers-migrate/SKILL.md"
+    },
+    {
+      "name": "model-migrate",
+      "description": "Migrate PyTorch repos to MindSpore",
+      "path": "skills/model-migrate/SKILL.md"
+    }
+  ]
+}

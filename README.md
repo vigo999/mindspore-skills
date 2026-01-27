@@ -1,80 +1,180 @@
 # MindSpore Skills
 
-Agent skills for MindSpore deep learning framework development. Compatible with Claude Code, Codex, Gemini CLI, and other AI coding assistants.
+MindSpore development skills for AI coding agents. Build CPU/GPU/NPU operators and migrate models with guided workflows.
 
-## Quick Start
+Compatible with **Claude Code**, **OpenCode**, **Gemini CLI**, and **Codex**.
+
+## Installation
 
 ### Claude Code
 
-```bash
-# Register as marketplace
-/plugin marketplace add mindspore-ai/mindspore-skills
+Register the marketplace and install:
 
-# Install a skill
-/plugin install cpu-builder@mindspore-skills
+```
+/plugin marketplace add vigo999/mindspore-skills
+/plugin install cpu-plugin-builder@mindspore-skills
 ```
 
-### OpenAI Codex
+Or install all skills:
 
-```bash
-# Clone to your project
-git clone https://github.com/mindspore-ai/mindspore-skills.git .mindspore-skills
-
-# Codex will automatically read AGENTS.md
+```
+/plugin install mindspore-skills
 ```
 
-### Other Tools (Cursor, Aider, etc.)
+Then use slash commands:
+
+```
+/ms-api-builder
+/ms-cpu-plugin-builder
+```
+
+### OpenCode
+
+Clone to your global config:
 
 ```bash
-# Use OpenSkills universal loader
-npm i -g openskills
-openskills install mindspore-ai/mindspore-skills
-openskills sync
+git clone https://github.com/vigo999/mindspore-skills.git ~/.config/opencode/mindspore-skills
+ln -s ~/.config/opencode/mindspore-skills/skills ~/.config/opencode/skills
+ln -s ~/.config/opencode/mindspore-skills/commands ~/.config/opencode/commands
 ```
+
+Or for a specific project:
+
+```bash
+git clone https://github.com/vigo999/mindspore-skills.git .opencode
+```
+
+Then in OpenCode:
+
+```
+/ms-api-builder
+```
+
+See [OpenCode Skills docs](https://opencode.ai/docs/skills) for more details.
+
+### Gemini CLI
+
+Install as an extension:
+
+```bash
+gemini extensions install https://github.com/vigo999/mindspore-skills.git --consent
+```
+
+Or from local clone:
+
+```bash
+git clone https://github.com/vigo999/mindspore-skills.git
+gemini extensions install ./mindspore-skills --consent
+```
+
+See [Gemini CLI extensions docs](https://geminicli.com/docs/extensions/) for more details.
+
+### Codex
+
+Clone to your project root:
+
+```bash
+git clone https://github.com/vigo999/mindspore-skills.git .mindspore-skills
+```
+
+Codex reads `AGENTS.md` automatically. Verify with:
+
+```bash
+codex "Summarize the MindSpore skills available."
+```
+
+See [Codex AGENTS guide](https://developers.openai.com/codex/guides/agents-md) for more details.
 
 ## Available Skills
 
+### Operator Development
+
 | Skill | Description |
 |-------|-------------|
-| [cpu-builder](skills/cpu-builder/) | Build MindSpore CPU operators by adapting ATen (libtorch) operators |
+| `cpu-plugin-builder` | Build CPU operators via ATen/libtorch adaptation |
+| `cpu-native-builder` | Build native CPU kernels with Eigen/SLEEF |
+| `gpu-builder` | Build GPU operators with CUDA |
+| `npu-builder` | Build NPU operators for Huawei Ascend |
 
-## Skill Structure
+### Model Migration
+
+| Skill | Description |
+|-------|-------------|
+| `hf-diffusers-migrate` | Migrate HF diffusers models to mindone.diffusers |
+| `hf-transformers-migrate` | Migrate HF transformers models to mindone.transformers |
+| `model-migrate` | Migrate PyTorch repos to MindSpore |
+
+## Available Commands
+
+### Operator Development
+
+| Command | Description |
+|---------|-------------|
+| `/ms-api-builder` | Platform router (CPU/GPU/NPU) |
+| `/ms-cpu-builder` | CPU approach router (plugin/native) |
+| `/ms-cpu-plugin-builder` | ATen adaptation workflow |
+| `/ms-cpu-native-builder` | Native kernel workflow |
+| `/ms-gpu-builder` | CUDA kernel workflow |
+| `/ms-npu-builder` | Ascend NPU workflow |
+
+### Model Migration
+
+| Command | Description |
+|---------|-------------|
+| `/ms-migrate` | Migration router (HF/third-party) |
+| `/ms-hf-migrate` | HF library router (diffusers/transformers) |
+| `/ms-hf-diffusers-migrate` | HF diffusers migration workflow |
+| `/ms-hf-transformers-migrate` | HF transformers migration workflow |
+| `/ms-model-migrate` | PyTorch repo migration workflow |
+
+## Usage Examples
+
+### Build a CPU operator
+
+```
+/ms-cpu-plugin-builder
+
+> Help me implement the linspace operator for MindSpore CPU
+```
+
+### Choose platform interactively
+
+```
+/ms-api-builder
+
+> I need to build a softmax operator
+```
+
+## Repository Structure
 
 ```
 mindspore-skills/
-├── .claude-plugin/
-│   └── marketplace.json      # Claude Code marketplace registry
-├── AGENTS.md                 # Universal agent instructions
-├── skills/
-│   └── cpu-builder/
-│       ├── .claude-plugin/
-│       │   └── plugin.json   # Plugin metadata
-│       ├── SKILL.md          # Main skill instructions
-│       └── reference/        # Additional documentation
-└── README.md
+├── .claude-plugin/          # Claude Code plugin config
+├── commands/                # Slash commands
+│   ├── ms-api-builder.md    # Operator platform router
+│   ├── ms-cpu-builder.md    # CPU approach router
+│   ├── ms-migrate.md        # Migration router
+│   ├── ms-hf-migrate.md     # HF library router
+│   └── ...
+├── skills/                  # Skill definitions
+│   ├── cpu-plugin-builder/  # ATen/libtorch operators
+│   ├── cpu-native-builder/  # Native CPU kernels
+│   ├── gpu-builder/         # CUDA operators
+│   ├── npu-builder/         # Ascend NPU operators
+│   ├── hf-diffusers-migrate/   # HF diffusers migration
+│   ├── hf-transformers-migrate/ # HF transformers migration
+│   └── model-migrate/       # PyTorch repo migration
+├── AGENTS.md                # Codex instructions
+└── gemini-extension.json    # Gemini CLI config
 ```
-
-## Creating New Skills
-
-1. Create a new directory under `skills/`
-2. Add `SKILL.md` with YAML frontmatter:
-   ```yaml
-   ---
-   name: my-skill
-   description: When to use this skill...
-   ---
-   # Instructions...
-   ```
-3. Add `.claude-plugin/plugin.json`
-4. Update `AGENTS.md` with the new skill
-5. Update `.claude-plugin/marketplace.json`
 
 ## Contributing
 
 1. Fork this repository
-2. Create your skill following the structure above
-3. Test with Claude Code: `/plugin install ./path/to/skill`
-4. Submit a pull request
+2. Add your skill to `skills/<skill-name>/SKILL.md`
+3. Add a command to `commands/<command-name>.md`
+4. Update `AGENTS.md` with the new skill
+5. Submit a pull request
 
 ## License
 

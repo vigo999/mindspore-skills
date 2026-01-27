@@ -1,7 +1,7 @@
 {
   "name": "mindspore-skills",
-  "description": "Agent Skills for MindSpore deep learning framework development including CPU operator building, testing, and optimization",
-  "version": "1.0.0",
+  "version": "1.1.0",
+  "description": "MindSpore operator development and model migration skills",
   "author": {
     "name": "MindSpore"
   },
@@ -13,8 +13,18 @@
     "deep-learning",
     "operator-development",
     "cpu-operators",
+    "gpu-operators",
+    "npu-operators",
+    "cuda",
+    "ascend",
     "aten",
     "pytorch",
-    "kernel-implementation"
-  ]
+    "model-migration",
+    "huggingface",
+    "diffusers",
+    "transformers",
+    "mindone"
+  ],
+  "commands": ["./commands/"],
+  "skills": ["./skills/"]
 }
