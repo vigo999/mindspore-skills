@@ -3,11 +3,16 @@
   "owner": {
     "name": "MindSpore"
   },
+  "metadata": {
+    "description": "Agent Skills for MindSpore deep learning framework development including CPU operator building, testing, and optimization",
+    "version": "1.0.0"
+  },
   "plugins": [
     {
-      "name": "mindspore-skills",
-      "source": ".",
-      "description": "All MindSpore skills - CPU operator development, testing, and optimization"
+      "name": "cpu-builder",
+      "source": "./skills/cpu-builder",
+      "skills": "./",
+      "description": "Build MindSpore CPU operators by adapting ATen (libtorch) operators. Implement CPU kernels for MindSpore op_plugin that call ATen operators from PyTorch."
     }
   ]
 }

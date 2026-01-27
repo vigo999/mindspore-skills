@@ -1,12 +1,20 @@
 {
   "name": "mindspore-skills",
-  "description": "Skills for MindSpore deep learning framework - operator development, testing, and optimization",
+  "description": "Agent Skills for MindSpore deep learning framework development including CPU operator building, testing, and optimization",
   "version": "1.0.0",
-  "skills": [
-    {
-      "name": "cpu-builder",
-      "path": "./skills/cpu-builder",
-      "description": "Build MindSpore CPU operators by adapting ATen (libtorch) operators"
-    }
+  "author": {
+    "name": "MindSpore"
+  },
+  "homepage": "https://github.com/vigo999/mindspore-skills",
+  "repository": "https://github.com/vigo999/mindspore-skills",
+  "license": "Apache-2.0",
+  "keywords": [
+    "mindspore",
+    "deep-learning",
+    "operator-development",
+    "cpu-operators",
+    "aten",
+    "pytorch",
+    "kernel-implementation"
   ]
 }
