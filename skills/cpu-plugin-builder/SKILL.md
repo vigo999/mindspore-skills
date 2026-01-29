@@ -1,13 +1,13 @@
 ---
-name: cpu-plugin-builder
-description: Build MindSpore CPU operators by adapting ATen (libtorch) operators via mindspore_op_plugin. Use when implementing ops in op_plugin/ops/kernel/, writing kernel .cc files, or creating operator tests with mint.*/Tensor.* interfaces.
+name: generate-kernel-cc
+description: Build MindSpore CPU operators by adapting ATen (libtorch) operators. Use when implementing new CPU operators for mindspore_op_plugin, writing kernel .cc files, adding forward/backward ops, or creating operator tests. For tasks involving mint.*, Tensor.*, operator adaptation, or CPU kernel development.
 ---
 
-# MindSpore CPU Plugin Builder (ATen Adaptation)
+# Generate Kernel CC File
 
-This skill helps you develop CPU operators for MindSpore's op_plugin that call ATen (libtorch) operators.
+This skill helps you generate a C++ kernel file for adapting a MindSpore operator to ATen backend in mindspore_op_plugin.
 
-## When to Use
+## When to use this skill
 
 Use this skill when:
 - Implementing new CPU operators for mindspore_op_plugin
@@ -28,18 +28,130 @@ Use this skill when:
 
 ### Step 1: Identify the Operator
 
-Find the operator definition in MindSpore:
+The source of truth is the export in `mindspore/python/mindspore/mint/__init__.py`.
 
-1. **Locate the op definition**: Search `mindspore/ops/op_def/yaml/<op>_op.yaml`
-2. **Derive the function name**: Convert YAML function name (snake_case) to CamelCase
-   - `lin_space_ext` in YAML -> `LinSpaceExt` in C++
-   - `sub_ext` in YAML -> `SubExt` in C++
+1) Locate mint export:
+```bash
+rg -n "^(from|import|\\w+\\s*=).*\\b<api_name>\\b" mindspore/python/mindspore/mint/__init__.py
+```
 
-3. **Check for overloads**: Some operators have multiple variants:
-   - `mint.max` requires `max.cc`, `max_dim.cc`, and `maximum.cc`
-   - Inplace variants like `Tensor.sub_` may need separate kernels
+2) Determine overload vs non-overload:
 
-### Step 2: Find the ATen Interface
+### Case A: from `mindspore.ops.functional_overload` (overload)
+1. Open `mindspore/ops/api_def/<api_name>.yaml`
+2. Collect all `op_yaml:` entries, ignore any with `deprecated/`
+3. For each `op_yaml`, locate:
+   - `mindspore/ops/op_def/yaml/<op_yaml>`
+4. If any required YAML is missing, stop: **`can't find ops yaml`**
+
+Notes:
+- One mint API can map to multiple op_defs (e.g. `max.yaml` → `max_op.yaml`, `max_dim_op.yaml`).
+- Kernel filename usually matches `op_yaml` without `_op.yaml`: `max_dim_op.yaml` → `max_dim.cc`.
+
+### Case B: not from `mindspore.ops.functional_overload` (non-overload)
+1. Find the alias in `mint/__init__.py`:
+   - Example: `from mindspore.ops.auto_generate import cummin_ext as cummin`
+2. Locate the primitive class in:
+   - `mindspore/python/mindspore/ops/auto_generate/gen_ops_prim.py`
+3. Map primitive class → `op_def` YAML:
+   - `CamelCase` → `snake_case` + `_op.yaml`
+   - Example: `CumminExt` → `cummin_ext_op.yaml`
+4. Locate the op definition:
+   - `mindspore/ops/op_def/yaml/<snake_name>_op.yaml`
+5. If not found, stop: **`can't find ops yaml`**
+
+### conditions (before any implementation)
+- If `mindspore/ops/api_def/<api_name>.yaml` has `alias:` → **need to implement the alias API**
+- If kernel already exists:
+  - `mindspore_op_plugin/op_plugin/ops/kernel/<kernel_name>.cc`
+  - no need to implement double
+
+Locate Backward Dependencies
+
+MindSpore backward ops come in two forms:
+
+1. **Composite bprop**: Gradient composed of basic ops (e.g., `Sin` grad uses `Cos` + `Mul`) - no separate `SinGrad` needed
+2. **Standalone Grad primitive**: bprop calls `XXXGrad` explicitly - need to implement `XXXGrad` kernel
+
+**How to find backward dependencies:**
+
+```bash
+# Search C++ expander (priority)
+rg 'REG_BPROP_BUILDER\("<PrimName>"\)' mindspore/ccsrc/frontend/expander/grad/
+
+# Search Python grad registration
+rg 'bprop_getters\.register' mindspore/python/mindspore/ops/_grad_experimental/
+```
+
+**From bprop implementation:**
+- If `Emit("XXXGrad", {...})` or `P.XXXGrad()` appears → implement `XXXGrad` kernel
+- If only basic ops (`Mul`/`Add`/`Cos`/`Neg`) → ensure those ops are already implemented
+
+**If `XXXGrad` exists, find its signature:**
+```bash
+cat mindspore/ops/op_def/yaml/xxx_grad_op.yaml
+```
+### Step 2: Classify the Operator
+
+Before implementing, classify the operator to determine which template to use. This helps ensure consistent code patterns.
+
+#### Category Classification Table
+
+| Category | Description | Key Characteristics | Template File |
+|----------|-------------|---------------------|---------------|
+| **01_unary** | Unary operations | Single input, single output, element-wise | `reference/01_unary_ops.cc` |
+| **02_binary** | Binary operations | Two inputs, single output, element-wise/broadcast | `reference/02_binary_ops.cc` |
+| **03_tensor_scalar** | Tensor-Scalar mixed | Tensor + Scalar inputs | `reference/03_tensor_scalar_ops.cc` |
+| **04_reduction** | Reduction operations | Reduce along dims, has keepdims | `reference/04_reduction_ops.cc` |
+| **05_generator** | Generator operations | No input or scalars only, creates new tensor | `reference/05_generator_ops.cc` |
+| **06_random** | Random operations | Requires seed/offset generator | `reference/06_random_ops.cc` |
+| **07_multi_output** | Multi-output operations | Multiple output tensors | `reference/07_multi_output_ops.cc` |
+| **08_gradient** | Gradient operations | Backward pass computation | `reference/08_gradient_ops.cc` |
+| **09_inplace** | Inplace operations | Uses xxx_() to modify input | `reference/09_inplace_ops.cc` |
+| **10_indexing** | Indexing operations | Involves index tensor | `reference/10_indexing_ops.cc` |
+| **11_shape** | Shape operations | Changes tensor shape/layout | `reference/11_shape_ops.cc` |
+| **12_nn** | Neural network operations | Complex NN layers (conv, norm) | `reference/12_nn_ops.cc` |
+| **13_comparison** | Comparison operations | Outputs bool tensor | `reference/13_comparison_ops.cc` |
+| **14_linalg** | Linear algebra operations | Matrix operations, decompositions | `reference/14_linalg_ops.cc` |
+
+#### Classification Examples
+
+| Operator | Category | Reason |
+|----------|----------|--------|
+| `abs`, `sin`, `cos`, `exp`, `sqrt`, `sigmoid` | 01_unary | Single input element-wise |
+| `add`, `sub`, `mul`, `div`, `maximum` | 02_binary | Two inputs element-wise |
+| `add_scalar`, `sub_scalar`, `pow_tensor_scalar` | 03_tensor_scalar | Tensor + Scalar mixed |
+| `sum`, `mean`, `max` (global), `reduce_max` | 04_reduction | Reduce along dimensions |
+| `arange`, `linspace`, `zeros`, `ones`, `empty`, `eye` | 05_generator | Create tensor from scalars |
+| `randn`, `rand`, `bernoulli`, `uniform`, `normal` | 06_random | Requires random generator |
+| `max_dim`, `cummax`, `topk`, `sort`, `svd` | 07_multi_output | Returns values + indices |
+| `sigmoid_grad`, `sqrt_grad`, `convolution_grad` | 08_gradient | Backward gradient computation |
+| `inplace_copy`, `inplace_fill`, `inplace_add` | 09_inplace | Modifies tensor inplace |
+| `index_select`, `gather`, `scatter`, `narrow` | 10_indexing | Uses index operations |
+| `concat`, `stack`, `tile`, `flatten`, `transpose` | 11_shape | Shape transformation |
+| `conv2d`, `batch_norm`, `softmax`, `pooling` | 12_nn | Neural network layers |
+| `eq`, `ne`, `lt`, `gt`, `le`, `ge`, `isclose` | 13_comparison | Returns bool tensor |
+| `matmul`, `bmm`, `mm`, `dot`, `addmm`, `outer` | 14_linalg | Linear algebra operations |
+
+#### How to Classify
+
+1. **Check input/output pattern**:
+   - Single tensor in → **unary** or **reduction**
+   - Two tensors in → **binary**, **comparison**, or **linalg**
+   - Scalars only → **generator**
+   - Has seed/offset → **random**
+   - Multiple outputs → **multi_output**
+
+2. **Check operation type**:
+   - Modifies input directly → **inplace**
+   - Uses index tensor → **indexing**
+   - Changes shape → **shape**
+   - Neural network layer → **nn**
+   - Has "Grad" suffix → **gradient**
+
+3. **Select the matching template** from `reference/` directory and adapt it.
+
+### Step 3: Find the ATen Interface
 
 Search for the corresponding ATen operator:
 
@@ -51,307 +163,33 @@ Reference files:
 - `aten/src/ATen/native/native_functions.yaml` for operator definitions
 - `aten/src/ATen/templates/RedispatchFunctions.h` for `_out` variants
 
-### Step 3: Implement the Kernel
+### Step 4: Create the Kernel File
 
-Create the kernel file at `op_plugin/ops/kernel/<op_name>.cc`:
+Location: `op_plugin/ops/kernel/{operator_name}.cc`
 
-```cpp
-/**
- * Copyright 2025 Huawei Technologies Co., Ltd
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * ...
- */
-#include <string.h>
-#include <torch/extension.h>
-#include <iostream>
+1. Copy the matching template from `reference/` directory based on Step 2 classification
+2. Replace `{{OperatorName}}` with actual operator name (CamelCase)
+3. Replace `{{aten_function}}` with actual ATen function name
+4. Adjust parameter indices according to YAML definition
+5. Handle optional parameters if needed
 
-#include "utils/op_utils.h"
+## Code Quality Requirements
 
-namespace op_plugin {
-namespace aten_op {
-extern "C" int OpName(int nparam, void **params, int *ndims, int64_t **shapes,
-                      const char **dtypes, void *stream, void *extra) {
-  // Convert MindSpore tensors to ATen tensors
-  auto tensors = ConvertToATenTensors(nparam, params, ndims, shapes, dtypes, extra, c10::kCPU);
+1. **Line length**: Maximum 120 characters per line
+2. **File ending**: Must end with a newline character
+3. **No trailing whitespace**: Remove all trailing spaces/tabs
+4. **Comments in extern "C"**: Use `/* */` style, NOT `//`
+5. **Copyright header**: Must use 2026 (current year)
 
-  // Parse non-tensor parameters if needed
-  KernelInputInfo &input_info = *static_cast<KernelInputInfo *>(extra);
-  KernelInputUtils input_utils(input_info);
-
-  // Get inputs and output (output is always last)
-  auto input = tensors[0];
-  auto output = tensors[nparam - 1];
-
-  // Call ATen operator (prefer _out variant)
-  at::op_name_out(output, input);
-  return 0;
-}
-}  // namespace aten_op
-}  // namespace op_plugin
-```
-
-### Step 4: Handle Backward Operators (if needed)
-
-Check if a gradient operator is required:
-
-1. **Locate bprop definition**: Search `REG_BPROP_BUILDER("<PrimName>")` in `mindspore/ccsrc/frontend/expander/grad/`
-2. **Check for dedicated Grad primitive**: Look for `Emit("XXXGrad", ...)` calls
-3. **Composed gradients**: If bprop uses basic ops (Mul, Add, Cos), ensure those ops are available
-
-If `XXXGrad` is needed, implement it similarly in `op_plugin/ops/kernel/<op_name>_grad.cc`.
-
-### Step 5: Build the Plugin
+### Quality Check Commands
 
 ```bash
-cd mindspore_op_plugin
-bash build.sh
-source env.source
+# Check line length (should be <= 120)
+awk 'length > 120 {print NR": "length" chars"}' op_plugin/ops/kernel/{operator_name}.cc
+
+# Remove trailing whitespace
+sed -i 's/[ \t]*$//' op_plugin/ops/kernel/{operator_name}.cc
+
+# Ensure file ends with newline
+[ -n "$(tail -c1 op_plugin/ops/kernel/{operator_name}.cc)" ] && echo >> op_plugin/ops/kernel/{operator_name}.cc
 ```
-
-Verify registration in build logs: `Found operator: OpName`
-
-### Step 6: Write Functional Tests
-
-Create `tests/st/mint/test_<op_name>.py`:
-
-```python
-#!/usr/bin/env python3
-# Copyright 2025 Huawei Technologies Co., Ltd
-# ... license header ...
-"""<op_name> op test case"""
-import pytest
-import numpy as np
-import mindspore as ms
-from mindspore import mint, jit
-from tests.utils.mark_utils import arg_mark
-from tests.utils.tools import allclose_nparray
-import torch
-
-
-def generate_expect_forward_output(input_data):
-    """Generate expected output using PyTorch."""
-    return torch.op_name(input_data)
-
-
-def forward_func(input_data):
-    """Forward function for mint.op_name."""
-    return mint.op_name(input_data)
-
-
-@arg_mark(
-    plat_marks=["cpu_linux"],
-    level_mark="level0",
-    card_mark="onecard",
-    essential_mark="essential",
-)
-@pytest.mark.parametrize("mode", ["pynative", "KBK"])
-def test_op_name_std(mode):
-    """
-    Feature: pyboost function.
-    Description: test function op_name.
-    Expectation: expect correct result.
-    """
-    # Setup test data
-    np.random.seed(0)
-    input_data = np.random.randn(3, 4).astype(np.float32)
-
-    # Get expected output from PyTorch
-    torch_input = torch.from_numpy(input_data)
-    expect = generate_expect_forward_output(torch_input)
-
-    # Run MindSpore
-    ms_input = ms.Tensor(input_data)
-    if mode == "pynative":
-        ms.context.set_context(mode=ms.PYNATIVE_MODE)
-        output = forward_func(ms_input)
-    elif mode == "KBK":
-        output = jit(forward_func, backend="ms_backend", jit_level="O0")(ms_input)
-
-    # Compare results
-    allclose_nparray(expect.detach().numpy(), output.asnumpy(), equal_nan=True)
-```
-
-### Step 7: Write Performance Tests
-
-Create `tests/st/mint/test_perf_<op_name>.py`:
-
-```python
-#!/usr/bin/env python3
-# Copyright 2025 Huawei Technologies Co., Ltd
-# ... license header ...
-"""<op_name> op performance test case"""
-import time
-import numpy as np
-import mindspore as ms
-from mindspore import mint
-from mindspore.common.api import _pynative_executor
-from tests.utils.test_op_utils import BACKGROUND_NOISE
-from tests.utils.mark_utils import arg_mark
-import torch
-import pytest
-
-
-@arg_mark(
-    plat_marks=["cpu_linux"],
-    level_mark="level1",
-    card_mark="onecard",
-    essential_mark="unessential",
-)
-@pytest.mark.parametrize("mode", ["pynative"])
-def test_op_name_perf(mode):
-    """
-    Feature: standard forward performance.
-    Description: test op_name op performance.
-    Expectation: expect performance OK (<=1.1x torch).
-    """
-    ms.context.set_context(mode=ms.PYNATIVE_MODE)
-
-    # Setup large test data
-    input_data = np.random.randn(1000, 1000).astype(np.float32)
-    ms_input = ms.Tensor(input_data)
-    torch_input = torch.from_numpy(input_data)
-
-    # Warm-up
-    for _ in range(1000):
-        _ = mint.op_name(ms_input)
-
-    # MindSpore timing
-    _pynative_executor.sync()
-    start = time.time()
-    for _ in range(1000):
-        _ = mint.op_name(ms_input)
-    _pynative_executor.sync()
-    ms_time = time.time() - start
-
-    # PyTorch timing
-    for _ in range(1000):
-        _ = torch.op_name(torch_input)
-    start = time.time()
-    for _ in range(1000):
-        _ = torch.op_name(torch_input)
-    torch_time = time.time() - start
-
-    # Performance gate: MindSpore should be within 1.1x of PyTorch
-    assert np.less(ms_time - BACKGROUND_NOISE, torch_time * 1.1).all()
-```
-
-### Step 8: Run Tests
-
-```bash
-source env.source
-pytest tests/st/mint/test_<op_name>.py
-pytest tests/st/mint/test_perf_<op_name>.py
-```
-
-## Test Coverage Checklist
-
-Ensure your tests cover:
-- [ ] Default arguments
-- [ ] Empty tensors
-- [ ] NaN and Inf values
-- [ ] All supported dtypes (float16, float32, float64, etc.)
-- [ ] Mixed/implicit dtype scenarios
-- [ ] 0D through 8D tensors
-- [ ] Non-contiguous tensors
-- [ ] Dynamic shapes
-- [ ] Boundary conditions and error messages
-- [ ] Functional interface (mint.xxx)
-- [ ] Tensor method interface (Tensor.xxx) if applicable
-- [ ] vmap with batch sizes 8/16/32/64/128 where relevant
-- [ ] Forward accuracy (zero deviation from torch)
-- [ ] Backward accuracy (zero deviation from torch) if gradient exists
-- [ ] Performance within 1.1x of PyTorch
-
-## Test Level Marks
-
-Use appropriate `level_mark` for different test types:
-
-- **`level0`**: Core functional tests (standard, dtype coverage, dimensions, special values, empty tensors, non-contiguous, dynamic shapes)
-- **`level1`**: vmap tests and performance tests only
-
-Example:
-```python
-# Core test - level0
-@arg_mark(plat_marks=['cpu_linux'], level_mark='level0', ...)
-def test_op_std(mode):
-    ...
-
-# Dtype coverage - level0
-@arg_mark(plat_marks=['cpu_linux'], level_mark='level0', ...)
-def test_op_dtype_coverage(mode, dtype_str):
-    ...
-
-# vmap test - level1
-@arg_mark(plat_marks=['cpu_linux'], level_mark='level1', ...)
-def test_op_vmap(mode, batch_size):
-    ...
-
-# Performance test - level1
-@arg_mark(plat_marks=['cpu_linux'], level_mark='level1', ...)
-def test_op_perf(mode):
-    ...
-```
-
-## vmap Testing Notes
-
-When testing with vmap, the batch dimension is added at dim 0. This affects gradient computation:
-
-```python
-# For vmap, batch is at dim 0, so adjust dim by +1 when computing gradient
-expect_grad = generate_expect_backward_output(
-    torch_x,
-    torch.tensor(grad, dtype=torch.float32),
-    dim=dim + 1,  # Adjust for batch dimension
-)
-```
-
-## Key Utilities
-
-### ConvertToATenTensors
-Converts MindSpore tensors to ATen tensors:
-```cpp
-auto tensors = ConvertToATenTensors(nparam, params, ndims, shapes, dtypes, extra, c10::kCPU);
-```
-
-### KernelInputUtils
-Parses non-tensor parameters:
-```cpp
-KernelInputInfo &input_info = *static_cast<KernelInputInfo *>(extra);
-KernelInputUtils input_utils(input_info);
-int64_t int_param = input_utils.GetIntInput(idx);
-at::Scalar scalar_param = input_utils.GetScalarInput(idx);
-```
-
-### allclose_nparray
-Compares arrays with tolerance:
-```python
-allclose_nparray(expected, actual, rtol=1e-5, atol=1e-8, equal_nan=True)
-```
-
-## Examples
-
-Reference implementations in `op_plugin/ops/kernel/`:
-- `add.cc` - Basic arithmetic operator
-- `linspace_ext.cc` - Operator with scalar parameters
-- `max_dim.cc` - Operator with multiple outputs
-- `inplace_sub_ext.cc` - Inplace operator
-
-Reference tests in `tests/st/mint/`:
-- `test_linspace.py` - Functional test example
-- `test_perf_linspace.py` - Performance test example
-
-## Troubleshooting
-
-**Build not registered**: Check CMake logs for `Found operator: <Op>`, verify file is in correct directory
-
-**Numerical mismatch**: Prefer `_out` variants, print intermediate values for debugging
-
-**Performance issues**: Check for extra allocations, ensure warm-up runs, verify BACKGROUND_NOISE subtraction
-
-## References
-
-For detailed documentation, see:
-- [plugin_process.md](reference/plugin_process.md) - Complete development workflow
-- [isses_linspace_op.md](reference/isses_linspace_op.md) - Example issue for linspace operator
-- [issuse_sub_inplace_op.md](reference/issuse_sub_inplace_op.md) - Example issue for inplace sub operator

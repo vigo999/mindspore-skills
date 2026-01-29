@@ -70,7 +70,7 @@ When a user's request matches a skill:
 
 This repository works with:
 
-- **Claude Code**: `/plugin marketplace add vigo999/mindspore-skills`
+- **Claude Code**: `/plugin marketplace add bleubleub9/mindspore-skills`
 - **OpenCode**: Clone to `~/.config/opencode/` or `.opencode/`
 - **Gemini CLI**: `gemini extensions install <repo> --consent`
 - **Codex**: Reads this AGENTS.md automatically
