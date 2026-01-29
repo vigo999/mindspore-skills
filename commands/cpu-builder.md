@@ -8,8 +8,8 @@ Two approaches for CPU operators:
 
 | Approach | Command | Use When |
 |----------|---------|----------|
-| **Plugin** | `/ms-cpu-plugin-builder` | Adapting ATen/libtorch ops via mindspore_op_plugin |
-| **Native** | `/ms-cpu-native-builder` | Writing native kernels in mindspore/ (Eigen/SLEEF) |
+| **Plugin** | `/cpu-plugin-builder` | Adapting ATen/libtorch ops via mindspore_op_plugin |
+| **Native** | `/cpu-native-builder` | Writing native kernels in mindspore/ (Eigen/SLEEF) |
 
 ## Quick Decision Guide
 
@@ -24,8 +24,8 @@ Two approaches for CPU operators:
 ## Usage
 
 ```
-/ms-cpu-builder plugin    → routes to /ms-cpu-plugin-builder
-/ms-cpu-builder native    → routes to /ms-cpu-native-builder
+/cpu-builder plugin    → routes to /cpu-plugin-builder
+/cpu-builder native    → routes to /cpu-native-builder
 ```
 
 If unclear, ask user:

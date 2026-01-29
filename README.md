@@ -12,23 +12,23 @@ Register the marketplace and install:
 
 ```
 /plugin marketplace add vigo999/mindspore-skills
-/plugin install mindspore-skills@mindspore-skills
+/plugin install mscode@mindspore-skills
 ```
 
 Then use slash command:
 
 ```
-/mindspore-skills:ms-cpu-builder
-/mindspore-skills:ms-cpu-plugin-builder
-/mindspore-skills:ms-api-builder
-/mindspore-skills:ms-cpu-native-builder
-/mindspore-skills:ms-gpu-builder
-/mindspore-skills:ms-hf-diffusers-migrate
-/mindspore-skills:ms-hf-migrate
-/mindspore-skills:ms-hf-transformers-migrate
-/mindspore-skills:ms-migrate
-/mindspore-skills:ms-model-migrate 
-/mindspore-skills:ms-npu-builder
+/mscode:cpu-builder
+/mmscode:cpu-plugin-builder
+/mscode:api-builder
+/mscode:cpu-native-builder
+/mscode:gpu-builder
+/mscode:hf-diffusers-migrate
+/mscode:hf-migrate
+/mscode:hf-transformers-migrate
+/mscode:migrate
+/mscode:model-migrate 
+/mscode:npu-builder
 ```
 
 ### OpenCode
@@ -50,7 +50,7 @@ git clone https://github.com/vigo999/mindspore-skills.git .opencode
 Then in OpenCode:
 
 ```
-/ms-api-builder
+/api-builder
 ```
 
 See [OpenCode Skills docs](https://opencode.ai/docs/skills) for more details.
@@ -113,29 +113,29 @@ See [Codex AGENTS guide](https://developers.openai.com/codex/guides/agents-md) f
 
 | Command | Description |
 |---------|-------------|
-| `/ms-api-builder` | Platform router (CPU/GPU/NPU) |
-| `/ms-cpu-builder` | CPU approach router (plugin/native) |
-| `/ms-cpu-plugin-builder` | ATen adaptation workflow |
-| `/ms-cpu-native-builder` | Native kernel workflow |
-| `/ms-gpu-builder` | CUDA kernel workflow |
-| `/ms-npu-builder` | Ascend NPU workflow |
+| `/api-builder` | Platform router (CPU/GPU/NPU) |
+| `/cpu-builder` | CPU approach router (plugin/native) |
+| `/cpu-plugin-builder` | ATen adaptation workflow |
+| `/cpu-native-builder` | Native kernel workflow |
+| `/gpu-builder` | CUDA kernel workflow |
+| `/npu-builder` | Ascend NPU workflow |
 
 ### Model Migration
 
 | Command | Description |
 |---------|-------------|
-| `/ms-migrate` | Migration router (HF/third-party) |
-| `/ms-hf-migrate` | HF library router (diffusers/transformers) |
-| `/ms-hf-diffusers-migrate` | HF diffusers migration workflow |
-| `/ms-hf-transformers-migrate` | HF transformers migration workflow |
-| `/ms-model-migrate` | PyTorch repo migration workflow |
+| `/migrate` | Migration router (HF/third-party) |
+| `/hf-migrate` | HF library router (diffusers/transformers) |
+| `/hf-diffusers-migrate` | HF diffusers migration workflow |
+| `/hf-transformers-migrate` | HF transformers migration workflow |
+| `/model-migrate` | PyTorch repo migration workflow |
 
 ## Usage Examples
 
 ### Build a CPU operator
 
 ```
-/ms-cpu-plugin-builder
+/cpu-plugin-builder
 
 > Help me implement the linspace operator for MindSpore CPU
 ```
@@ -143,7 +143,7 @@ See [Codex AGENTS guide](https://developers.openai.com/codex/guides/agents-md) f
 ### Choose platform interactively
 
 ```
-/ms-api-builder
+/api-builder
 
 > I need to build a softmax operator
 ```
@@ -154,10 +154,10 @@ See [Codex AGENTS guide](https://developers.openai.com/codex/guides/agents-md) f
 mindspore-skills/
 ├── .claude-plugin/          # Claude Code plugin config
 ├── commands/                # Slash commands
-│   ├── ms-api-builder.md    # Operator platform router
-│   ├── ms-cpu-builder.md    # CPU approach router
-│   ├── ms-migrate.md        # Migration router
-│   ├── ms-hf-migrate.md     # HF library router
+│   ├── api-builder.md       # Operator platform router
+│   ├── cpu-builder.md       # CPU approach router
+│   ├── migrate.md           # Migration router
+│   ├── hf-migrate.md        # HF library router
 │   └── ...
 ├── skills/                  # Skill definitions
 │   ├── cpu-plugin-builder/  # ATen/libtorch operators

@@ -10,7 +10,7 @@
   },
   "plugins": [
     {
-      "name": "mindspore-skills",
+      "name": "mscode",
       "source": "./",
       "description": "Complete collection of MindSpore development skills - CPU/GPU/NPU operator building, testing, optimization, and model migration from PyTorch/HuggingFace",
       "author": {
@@ -35,41 +35,6 @@
         "operator-development",
         "model-migration"
       ]
-    },
-    {
-      "name": "cpu-native-builder",
-      "source": "./skills/cpu-native-builder",
-      "description": "Build native CPU kernels for MindSpore using Eigen/SLEEF or hand-written implementations. Use when implementing ops directly in mindspore/ repository without external ATen dependency."
-    },
-    {
-      "name": "cpu-plugin-builder",
-      "source": "./skills/cpu-plugin-builder",
-      "description": "Build MindSpore CPU operators by adapting ATen (libtorch) operators via mindspore_op_plugin. Use when implementing ops in op_plugin/ops/kernel/, writing kernel .cc files, or creating operator tests with mint.*/Tensor.* interfaces."
-    },
-    {
-      "name": "gpu-builder",
-      "source": "./skills/gpu-builder",
-      "description": "Build MindSpore GPU operators using CUDA. Use when implementing CUDA kernels in mindspore/ccsrc/plugin/device/gpu/kernel/."
-    },
-    {
-      "name": "npu-builder",
-      "source": "./skills/npu-builder",
-      "description": "Build MindSpore NPU operators for Huawei Ascend chips using CANN. Use when implementing operators in mindspore/ccsrc/plugin/device/ascend/kernel/."
-    },
-    {
-      "name": "hf-diffusers-migrate",
-      "source": "./skills/hf-diffusers-migrate",
-      "description": "Migrate Hugging Face diffusers models to mindone.diffusers. Use when porting Stable Diffusion, SDXL, ControlNet, or other diffusion models."
-    },
-    {
-      "name": "hf-transformers-migrate",
-      "source": "./skills/hf-transformers-migrate",
-      "description": "Migrate Hugging Face transformers models to mindone.transformers. Use when porting BERT, GPT, LLaMA, or other transformer models."
-    },
-    {
-      "name": "model-migrate",
-      "source": "./skills/model-migrate",
-      "description": "Migrate third-party PyTorch model repositories to MindSpore. Use when converting standalone PyTorch projects, research code, or custom architectures."
     }
   ]
 }

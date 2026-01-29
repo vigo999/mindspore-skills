@@ -8,14 +8,14 @@ Select a library to migrate from:
 
 | Library | Command | Target |
 |---------|---------|--------|
-| **Diffusers** | `/ms-hf-diffusers-migrate` | mindone.diffusers |
-| **Transformers** | `/ms-hf-transformers-migrate` | mindone.transformers |
+| **Diffusers** | `/hf-diffusers-migrate` | mindone.diffusers |
+| **Transformers** | `/hf-transformers-migrate` | mindone.transformers |
 
 ## Usage
 
 ```
-/ms-hf-migrate diffusers      → routes to /ms-hf-diffusers-migrate
-/ms-hf-migrate transformers   → routes to /ms-hf-transformers-migrate
+/hf-migrate diffusers      → routes to /hf-diffusers-migrate
+/hf-migrate transformers   → routes to /hf-transformers-migrate
 ```
 
 ## Target Repository

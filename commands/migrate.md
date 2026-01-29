@@ -8,14 +8,14 @@ Select a migration type:
 
 | Type | Command | Description |
 |------|---------|-------------|
-| **HF Models** | `/ms-hf-migrate` | Migrate Hugging Face models to MindOne |
-| **Third-party** | `/ms-model-migrate` | Migrate PyTorch repos to MindSpore |
+| **HF Models** | `/hf-migrate` | Migrate Hugging Face models to MindOne |
+| **Third-party** | `/model-migrate` | Migrate PyTorch repos to MindSpore |
 
 ## Usage
 
 ```
-/ms-migrate hf       → routes to /ms-hf-migrate
-/ms-migrate model    → routes to /ms-model-migrate
+/migrate hf       → routes to /hf-migrate
+/migrate model    → routes to /model-migrate
 ```
 
 If no type specified, ask user what they want to migrate.
