@@ -1,0 +1,14 @@
+{
+  "name": "cpu-plugin-builder",
+  "version": "1.0.0",
+  "description": "Build MindSpore CPU operators by adapting ATen (libtorch) operators via mindspore_op_plugin. Use when implementing ops in op_plugin/ops/kernel/, writing kernel .cc files, or creating operator tests with mint.*/Tensor.* interfaces.",
+  "author": {
+    "name": "MindSpore"
+  },
+  "homepage": "https://github.com/vigo999/mindspore-skills",
+  "repository": "https://github.com/vigo999/mindspore-skills",
+  "license": "Apache-2.0",
+  "skills": [
+    "./"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "gpu-builder",
+  "version": "1.0.0",
+  "description": "Build MindSpore GPU operators using CUDA. Use when implementing CUDA kernels in mindspore/ccsrc/plugin/device/gpu/kernel/.",
+  "author": {
+    "name": "MindSpore"
+  },
+  "homepage": "https://github.com/vigo999/mindspore-skills",
+  "repository": "https://github.com/vigo999/mindspore-skills",
+  "license": "Apache-2.0",
+  "skills": ["./"]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "npu-builder",
+  "version": "1.0.0",
+  "description": "Build MindSpore NPU operators for Huawei Ascend chips using CANN. Use when implementing operators in mindspore/ccsrc/plugin/device/ascend/kernel/.",
+  "author": {
+    "name": "MindSpore"
+  },
+  "homepage": "https://github.com/vigo999/mindspore-skills",
+  "repository": "https://github.com/vigo999/mindspore-skills",
+  "license": "Apache-2.0",
+  "skills": ["./"]
+}
