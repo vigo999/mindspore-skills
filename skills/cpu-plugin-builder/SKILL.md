@@ -26,18 +26,9 @@ Use this skill when:
 
 ## Instructions
 
-### Step 1: Identify the Operator
+### Step 1: Identify the Operator Name
 
-Find the operator definition in MindSpore:
-
-1. **Locate the op definition**: Search `mindspore/ops/op_def/yaml/<op>_op.yaml`
-2. **Derive the function name**: Convert YAML function name (snake_case) to CamelCase
-   - `lin_space_ext` in YAML -> `LinSpaceExt` in C++
-   - `sub_ext` in YAML -> `SubExt` in C++
-
-3. **Check for overloads**: Some operators have multiple variants:
-   - `mint.max` requires `max.cc`, `max_dim.cc`, and `maximum.cc`
-   - Inplace variants like `Tensor.sub_` may need separate kernels
+Find the operator definition in MindSpore via cpu-find-name skill
 
 ### Step 2: Find the ATen Interface
 
