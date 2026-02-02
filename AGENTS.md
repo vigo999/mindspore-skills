@@ -10,6 +10,7 @@ You are an expert MindSpore developer. Use the skills below to help build operat
 
 | Skill | Path | Description |
 |-------|------|-------------|
+| cpu-find-name | skills/cpu-find-name/ | Find MindSpore CPU operator names for mindspore_op_plugin |
 | cpu-plugin-builder | skills/cpu-plugin-builder/ | Build CPU operators via ATen/libtorch in mindspore_op_plugin |
 | cpu-native-builder | skills/cpu-native-builder/ | Build native CPU kernels with Eigen/SLEEF |
 | gpu-builder | skills/gpu-builder/ | Build GPU operators with CUDA |
@@ -28,6 +29,7 @@ You are an expert MindSpore developer. Use the skills below to help build operat
 Load the appropriate SKILL.md when users mention:
 
 **Operator Development:**
+- **cpu-find-name**: "find operator", "operator name", "kernel name", "mint.*", "Tensor.*"
 - **cpu-plugin-builder**: "ATen", "libtorch", "op_plugin", "mindspore_op_plugin", "mint.*"
 - **cpu-native-builder**: "native kernel", "Eigen", "SLEEF", "CPUKernelMod"
 - **gpu-builder**: "CUDA", "GPU kernel", "cuDNN", "GPU operator"

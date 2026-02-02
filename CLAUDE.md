@@ -14,7 +14,7 @@ When adding or modifying skills, ensure:
 
 1. SKILL.md has valid YAML frontmatter with `name` and `description`
 2. Skill name in SKILL.md matches the directory name
-3. plugin.json exists and references the skill correctly
+3. `.claude-plugin/plugin.json` references the skills directory correctly
 4. marketplace.json is updated with new skills
 5. AGENTS.md includes the skill in the table
 
@@ -24,8 +24,8 @@ Test locally before committing:
 
 ```bash
 # Claude Code
-/plugin install ./skills/cpu-builder
+/plugin install ./skills/cpu-plugin-builder
 
 # Verify activation
-/cpu-builder "describe the workflow"
+/cpu-plugin-builder "describe the workflow"
 ```

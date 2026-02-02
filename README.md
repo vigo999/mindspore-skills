@@ -19,7 +19,8 @@ Then use slash command:
 
 ```
 /mscode:cpu-builder
-/mmscode:cpu-plugin-builder
+/mscode:cpu-find-name
+/mscode:cpu-plugin-builder
 /mscode:api-builder
 /mscode:cpu-native-builder
 /mscode:gpu-builder
@@ -94,6 +95,7 @@ See [Codex AGENTS guide](https://developers.openai.com/codex/guides/agents-md) f
 
 | Skill | Description |
 |-------|-------------|
+| `cpu-find-name` | Find MindSpore CPU operator names for mindspore_op_plugin |
 | `cpu-plugin-builder` | Build CPU operators via ATen/libtorch adaptation |
 | `cpu-native-builder` | Build native CPU kernels with Eigen/SLEEF |
 | `gpu-builder` | Build GPU operators with CUDA |
@@ -115,6 +117,7 @@ See [Codex AGENTS guide](https://developers.openai.com/codex/guides/agents-md) f
 |---------|-------------|
 | `/api-builder` | Platform router (CPU/GPU/NPU) |
 | `/cpu-builder` | CPU approach router (plugin/native) |
+| `/cpu-find-name` | Find operator kernel names |
 | `/cpu-plugin-builder` | ATen adaptation workflow |
 | `/cpu-native-builder` | Native kernel workflow |
 | `/gpu-builder` | CUDA kernel workflow |
