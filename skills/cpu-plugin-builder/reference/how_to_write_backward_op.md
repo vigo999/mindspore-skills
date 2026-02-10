@@ -1,10 +1,12 @@
 
 ### HOW TO WRITE BACKWARD OP
 
-When you know the forward op name, use api-helper skill to get backward op needed for forward op.
+When you know the forward op name, use api-helper skill to get all backward ops needed for that forward op.
 
 ## Coding Rules
 - Ensure there is one operator in one .cc file
+- Parse the full `REG_BPROP_BUILDER` body; do not stop at the first `Emit("XXXGrad", ...)`.
+- Before adding a new kernel, check `op_plugin/ops/kernel/` to avoid duplicate implementation.
 
 #### Case 1: Standalone Grad Operator:
  - If the backward uses `Emit("XXXGrad", ...)`, it is dedicated grad operator.
@@ -40,7 +42,7 @@ extern "C" int GeluGradExt(int nparam, void **params, int *ndims, int64_t **shap
 #### Case 2: Multiple Primitive Operators
 
  - For `AcosExt` backward which uses `ib->Neg(dout) * ib->Rsqrt(ib->Sub(..., ib->Square(x)))`:
- - backward op is Neg,Rsqrt,Square, so you should write three neg.cc, rsqrt.cc, square.cc in `op_plugin/ops/kernel/xxx_grad.cc`
+ - backward ops include `Neg`, `Rsqrt`, `Sub`, `Square` (and expression math like mul), so write missing primitive files such as `neg.cc`, `rsqrt.cc`, `sub.cc`, `square.cc` under `op_plugin/ops/kernel/`
  - e.g. for neg.cc
 
 ```
@@ -69,6 +71,19 @@ extern "C" int Neg(int nparam, void **params, int *ndims, int64_t **shapes, cons
 
 ```
 
+#### Case 3: Mixed Composite Backward Chain
+
+ - Some backward bodies mix helper primitives and emitted grad operators.
+ - Example: `AdaptiveMaxPool1D` backward chain may include:
+   - `ExpandDims`
+   - `Emit("AdaptiveMaxPool2DGrad", ...)`
+   - `Reshape`
+   - `OutZeros(output_size)`
+ - Classify operators before implementation:
+   - kernel-required primitives: `ExpandDims`, `Reshape`, `Squeeze`, `Transpose`, `Cast`, and emitted grad ops (for example `AdaptiveMaxPool2DGrad`) if missing
+   - graph/meta helpers (no kernel file): `OutZeros`, `ShapeCalc`, `TupleGetItem`, `EmitValue`
+ - Implement only missing kernel-required operators.
+
 ### NOTES:
  - if BinopGradCommon() , backward op are SumExt/ReduceSum, so sum_ext.cc and reshape.cc are needed.
- - check `op_plugin/ops/kernel/` first, if ops are already there. no need to write. but need to notify
+ - check `op_plugin/ops/kernel/` first; if ops are already there, no need to write, but notify in the report.
