@@ -4,6 +4,8 @@ Resolve exact implementation scope before writing kernels.
 
 ## Inputs
 - target API name (for example `mint.broadcast_to`, `mint.nn.AdaptiveMaxPool1d`)
+- `MS_CPU_PLUGIN_SCOPE_KEY`
+- `MS_CPU_PLUGIN_SCOPE_FILE`
 
 ## Steps
 1. Use `api-helper` to resolve:
@@ -25,7 +27,8 @@ Resolve exact implementation scope before writing kernels.
 6. Produce missing-op lists.
 
 ## Output Artifact
-Write `mindspore_op_plugin/.skill_artifacts/op_scope.json` with keys:
+Write `MS_CPU_PLUGIN_SCOPE_FILE` with keys:
+- `scope_key`
 - `api_name`
 - `forward_primitive`
 - `forward_ops`
@@ -36,5 +39,10 @@ Write `mindspore_op_plugin/.skill_artifacts/op_scope.json` with keys:
 - `missing_backward_ops`
 - `notes`
 
+Write atomically:
+1. write JSON to a temp file under `$(dirname "$MS_CPU_PLUGIN_SCOPE_FILE")`
+2. `mv` temp file to `MS_CPU_PLUGIN_SCOPE_FILE`
+
 ## Hard Rule
 Writers may implement only operators listed in `missing_forward_ops` and `missing_backward_ops`.
+`scope_key` in artifact must equal `MS_CPU_PLUGIN_SCOPE_KEY`.
