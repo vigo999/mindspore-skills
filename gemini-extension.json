@@ -29,6 +29,11 @@
       "path": "skills/npu-builder/SKILL.md"
     },
     {
+      "name": "mindspore-aclnn-operator-devflow",
+      "description": "End-to-end ACLNN operator adaptation workflow for MindSpore Ascend",
+      "path": "skills/mindspore-aclnn-operator-devflow/SKILL.md"
+    },
+    {
       "name": "hf-diffusers-migrate",
       "description": "Migrate HF diffusers models to mindone.diffusers",
       "path": "skills/hf-diffusers-migrate/SKILL.md"

@@ -15,6 +15,7 @@ You are an expert MindSpore developer. Use the skills below to help developers w
 | cpu-native-builder | skills/cpu-native-builder/ | build native CPU kernels with Eigen/SLEEF |
 | gpu-builder | skills/gpu-builder/ | build GPU operators with CUDA |
 | npu-builder | skills/npu-builder/ | build NPU operators for Huawei Ascend |
+| mindspore-aclnn-operator-devflow | skills/mindspore-aclnn-operator-devflow/ | end-to-end ACLNN operator adaptation workflow for MindSpore Ascend |
 | hf-diffusers-migrate | skills/hf-diffusers-migrate/ | migrate HF diffusers models to mindone.diffusers |
 | hf-transformers-migrate | skills/hf-transformers-migrate/ | migrate Hugging Face transformers models to mindone.transformers |
 | hf-transformers-migrate-test | skills/hf-transformers-migrate-test/ | Generate minimal MindOne transformer tests for migrated models |
@@ -32,6 +33,7 @@ Load the appropriate SKILL.md when users mention:
 - **cpu-native-builder**: "CPU kernel", "Eigen", "SLEEF", "native CPU",
 - **gpu-builder**: "CUDA", "GPU kernel", "cuDNN",
 - **npu-builder**: "Ascend", "NPU", "aclnn", "AICore",
+- **mindspore-aclnn-operator-devflow**: "aclnn", "PyBoost", "KBK", "op_def", "GeneralInfer", "bprop",
 
 **Model Migration:**
 - **hf-diffusers-migrate**: "diffusers", "mindone.diffusers",

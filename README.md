@@ -28,6 +28,7 @@ Then use slash command:
 /mscode:migrate
 /mscode:model-migrate
 /mscode:npu-builder
+/mscode:mindspore-aclnn-operator-devflow
 /mscode:api-helper
 ```
 
@@ -99,6 +100,7 @@ See [Codex AGENTS guide](https://developers.openai.com/codex/guides/agents-md) f
 | `cpu-native-builder` | Build native CPU kernels with Eigen/SLEEF |
 | `gpu-builder` | Build GPU operators with CUDA |
 | `npu-builder` | Build NPU operators for Huawei Ascend |
+| `mindspore-aclnn-operator-devflow` | End-to-end ACLNN operator adaptation workflow for MindSpore Ascend |
 
 ### Model Migration
 
@@ -120,6 +122,7 @@ See [Codex AGENTS guide](https://developers.openai.com/codex/guides/agents-md) f
 | `/cpu-native-builder` | Native kernel workflow |
 | `/gpu-builder` | CUDA kernel workflow |
 | `/npu-builder` | Ascend NPU workflow |
+| `/mindspore-aclnn-operator-devflow` | ACLNN deep development workflow |
 
 ### Model Migration
 
@@ -157,6 +160,7 @@ mindspore-skills/
 │   ├── cpu-native-builder/  # Native CPU kernels
 │   ├── gpu-builder/         # CUDA operators
 │   ├── npu-builder/         # Ascend NPU operators
+│   ├── mindspore-aclnn-operator-devflow/ # ACLNN deep development workflow
 │   ├── hf-diffusers-migrate/   # HF diffusers migration
 │   ├── hf-transformers-migrate/ # HF transformers migration
 │   ├── hf-transformers-migrate-test/ # HF transformers test generation after migration
