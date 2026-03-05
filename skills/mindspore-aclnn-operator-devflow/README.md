@@ -12,7 +12,7 @@ PyBoost/KBK、动态 shape、测试与文档，帮助开发者更稳定地完成
 | `workflows/` | **步骤详解** | 每步独立 md 文件，含 Goal/Input/Output/Steps/成功标准/下一步 |
 | `templates/` | **中间产物模板** | Feature 文档模板、PTA 源码审查报告、ACLNN 调用链盘点表（可直接复制填写） |
 | `reference.md` | 知识参考 | 30 个章节的技术细节、代码骨架模板 |
-| `checklists.md` | 可复制清单 | 带优先级标记的 12 大类检查项 + 最终文件清单(A-K) + 提交前 Top-25 |
+| `checklists.md` | 可复制清单 | 带优先级标记的 12 大类检查项 + 最终文件清单(A-L) + 提交前 Top-25 |
 | `examples.md` | 触发样例 | 25 个"用户说 X → agent 做 Y"示例 |
 | `traceability.md` | 溯源映射 | 原始来源文档 → skill 落点对应表 |
 | `scripts/` | 工具脚本 | PTA 支持范围探测脚本模板 |
