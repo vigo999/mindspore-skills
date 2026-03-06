@@ -20,7 +20,7 @@ This tells you:
 - **Operator name**: `LinSpaceExt` (CamelCase of `linspace_ext`)
 
 ##### Case 1: Overloaded Operators
-e.g. `mint.max` have three implementaions. this info can be found in `mindspore/ops/api_def/max`.
+e.g. `mint.max` has three implementations. this info can be found in `mindspore/ops/api_def/max`.
 and it is import from function_overload module in `mindspore/python/mindspore/mint/__init__.py`
 
 ```
@@ -61,31 +61,52 @@ max:
 - Forward: `inplace_sub_ext.cc`
 - The `_` suffix in Python indicates inplace operation
 
+##### Case 3: Wrapper/Module APIs
+
+Some APIs are class/module wrappers and are neither overload nor inplace.
+
+Example: `mint.nn.AdaptiveMaxPool1d`
+- `mint.nn.layer.pooling.AdaptiveMaxPool1d.construct`
+- `mint.nn.functional.adaptive_max_pool1d`
+- `ops.auto_generate.gen_ops_prim.adaptive_max_pool1d_op(...)`
+- primitive from YAML/class name: `AdaptiveMaxPool1D`
+
 #### Step 2: Identify Backward Operator Name
 1. Search `mindspore/ccsrc/frontend/expander/grad/` for the **CORRECT operator name** from Step 1
-2. Look for `REG_BPROP_BUILDER("<CorrectOpName>")` registration (e.g., "AcosExt" not "ACos")
+2. Look for `REG_BPROP_BUILDER("<CorrectOpName>")` registration (e.g., "AcosExt" not "ACos"). parse the full REG_BPROP_BUILDER body.
 3. **EXTRACT AND LIST each individual operator call from the gradient computation**:
    - Look for `ib->OperatorName(...)` patterns in the BODYFUNC
    - List each operator name (e.g., Mul, Muls, Exp, PowTensorScalar, Add, Sub, etc.)
    - Show the line of code for each operator call
+   - Enumerate all `ib->...` operators in bprop body, not only `Emit("XXXGrad", ...)`.
 
 ##### Case 1: Standalone Grad Operator:
- - If the backward uses `Emit("XXXGrad", ...)`, it is dedicated grad operator.
+ - only uses `Emit("XXXGrad", ...)`, it is dedicated grad operator.
 
 ##### Case 2: Multiple Primitive Operators
+ - For `AcosExt` backward which uses `ib->Neg(dout) * ib->Rsqrt(ib->Sub(..., ib->Square(x)))`
 
- - For `AcosExt` backward which uses `ib->Neg(dout) * ib->Rsqrt(ib->Sub(..., ib->Square(x)))`:
+##### Case 3: Mixed Composite Backward Chain
+ - Some bprop bodies mix helper primitives and emitted grad ops.
+ - Example `AdaptiveMaxPool1D` backward chain:
+  - `ExpandDims`
+  - `Emit("AdaptiveMaxPool2DGrad", ...)`
+  - `Reshape`
+  - `OutZeros(output_size)`
+ - Scope rules:
+  - Kernel-required primitives: `ExpandDims`, `Reshape`, `Squeeze`, `Transpose`, `Cast`, etc.
+  - Graph/meta helpers (no kernel file): `OutZeros`, `ShapeCalc`, `TupleGetItem`, `EmitValue`.
 
 ### Key Search Locations
 
-| Purpose | Path |
-|---------|------|
-| mint.* imports | `mindspore/python/mindspore/mint/__init__.py` |
-| Tensor.* methods | `mindspore/python/mindspore/common/tensor/tensor.py` |
-| Function implementations | `mindspore/python/mindspore/ops/function/*.py` |
-| Primitive definitions | `mindspore/python/mindspore/ops/auto_generate/gen_ops_prim.py` |
-| Op YAML definitions | `mindspore/ops/op_def/yaml/*_op.yaml` |
-| Gradient definitions | `mindspore/ccsrc/frontend/expander/grad/` |
+| Purpose                  | Path                                                           |
+| ------------------------ | -------------------------------------------------------------- |
+| mint.* imports           | `mindspore/python/mindspore/mint/__init__.py`                  |
+| Tensor.* methods         | `mindspore/python/mindspore/common/tensor/tensor.py`           |
+| Function implementations | `mindspore/python/mindspore/ops/function/*.py`                 |
+| Primitive definitions    | `mindspore/python/mindspore/ops/auto_generate/gen_ops_prim.py` |
+| Op YAML definitions      | `mindspore/ops/op_def/yaml/*_op.yaml`                          |
+| Gradient definitions     | `mindspore/ccsrc/frontend/expander/grad/`                      |
 
 
 ### Examples
@@ -117,4 +138,3 @@ REG_BPROP_BUILDER("AcosExt").SetUnusedInputs({i1}).SetBody(BODYFUNC(ib) {
 3. `Rsqrt` - reciprocal square root
 4. `Sub` - subtraction
 5. `Square` - squaring
-
