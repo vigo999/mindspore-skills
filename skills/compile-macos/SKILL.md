@@ -1,19 +1,42 @@
 ---
 name: compile-macos
-description: Compile MindSpore from source on macOS Apple Silicon. Use this skill when the user wants to "compile MindSpore", "build MindSpore from source", "编译MindSpore", "源码编译", mentions "MindSpore compilation on macOS", or discusses building MindSpore on Apple Silicon. Trigger on phrases like "compile mindspore", "build from source", "源码编译mindspore".
-version: 1.0.0
+description: Use when user requests MindSpore compilation from source on macOS Apple Silicon, mentions build errors, dependency issues, or asks about "compile MindSpore", "build from source", "编译MindSpore", "源码编译"
 ---
 
 # MindSpore macOS Compilation
 
-Automated compilation of MindSpore from source for macOS Apple Silicon platform.
+## Overview
 
-## When to Use This Skill
+Systematic workflow for compiling MindSpore from source on macOS Apple Silicon. Core principle: verify environment at each stage before proceeding to avoid cascading failures.
 
-Use this skill when the user wants to:
-- Compile MindSpore from source code
-- Build MindSpore on macOS Apple Silicon
-- Troubleshoot MindSpore compilation issues
+## When to Use
+
+**Use this skill when:**
+- User requests MindSpore compilation from source
+- Building on macOS Apple Silicon (M1/M2/M3)
+- Troubleshooting build failures or dependency errors
+- Setting up development environment for MindSpore
+- Keywords: "compile", "build from source", "编译", "源码编译", "compilation error"
+
+**Don't use for:**
+- Installing pre-built MindSpore packages (use pip/conda instead)
+- Linux or Windows compilation (different toolchain)
+- Runtime errors after successful installation
+
+## Quick Reference
+
+| Stage | Key Command | Verification |
+|-------|-------------|--------------|
+| Environment | `conda activate mindspore_py310` | `python --version` shows 3.10 |
+| Source | `git clone https://gitcode.com/mindspore/mindspore.git` | `build.sh` exists |
+| Dependencies | `conda install cmake=3.22.3 patch autoconf -y` | `cmake --version` |
+| Build | `bash build.sh -e cpu -S on -j4` | Check `output/` directory |
+| Install | `pip install output/mindspore-*.whl` | `import mindspore` works |
+| Verify | `mindspore.run_check()` | Prints success message |
+
+**Typical build time:** 30-60 minutes (first build)
+**Disk space required:** 20GB minimum
+**Troubleshooting:** See `reference/troubleshooting.md` for error patterns
 
 ## Prerequisites
 
@@ -135,6 +158,24 @@ python -c "import mindspore;print(mindspore.__version__)"
 2. **Disk Space**: Requires at least 20GB
 3. **Cache**: MSLIBS_CACHE_PATH avoids re-downloading dependencies
 4. **Troubleshooting**: When compilation errors occur, refer to `reference/troubleshooting.md` for historical error records and solutions
+
+## Common Mistakes
+
+| Mistake | Symptom | Fix |
+|---------|---------|-----|
+| Wrong Python version | Import errors, ABI mismatch | Use Python 3.10 exactly |
+| Missing Xcode tools | `clang: command not found` | Run `xcode-select --install` |
+| Insufficient disk space | Build fails mid-compilation | Free up 20GB+ before starting |
+| Skipping environment variables | Linker errors, missing symbols | Set CC, CXX, LIBRARY_PATH, LDFLAGS |
+| Not in source directory | `build.sh: No such file` | Verify `pwd` shows mindspore/ |
+| Reusing old cache with new source | Cryptic build failures | Clear `.mslib/` and rebuild |
+| Installing without uninstalling old version | Version conflicts | `pip uninstall mindspore -y` first |
+
+**When build fails:**
+1. Check `reference/troubleshooting.md` for matching error pattern
+2. Verify all environment variables are set
+3. Confirm you're in the correct directory
+4. Check disk space: `df -h .`
 
 ## User Interaction Guidelines
 
