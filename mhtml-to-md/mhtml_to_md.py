@@ -28,7 +28,7 @@ except AttributeError:
     pass
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageOps
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
@@ -100,7 +100,33 @@ class OllamaExtractor:
         
         if image.mode != 'RGB':
             image = image.convert('RGB')
-        
+
+        # Normalize dimensions for CogViT patch compatibility (14x14 patches)
+        PATCH_SIZE = 14
+        MAX_DIM = 1344
+        w, h = image.size
+
+        # Cap to max resolution first (preserve aspect ratio)
+        # IMPORTANT: Avoid exact MAX_DIM boundary due to CogViT internal bug
+        if w > MAX_DIM or h > MAX_DIM:
+            scale = min(MAX_DIM / w, MAX_DIM / h)
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+            # If scaled dimension equals MAX_DIM exactly, reduce by one patch to avoid edge case
+            if new_w == MAX_DIM:
+                new_w = MAX_DIM - PATCH_SIZE
+            if new_h == MAX_DIM:
+                new_h = MAX_DIM - PATCH_SIZE
+            image = image.resize((new_w, new_h), Image.LANCZOS)
+            w, h = image.size
+
+        # Pad to nearest multiple of patch size with white pixels
+        pad_r = (PATCH_SIZE - w % PATCH_SIZE) % PATCH_SIZE
+        pad_b = (PATCH_SIZE - h % PATCH_SIZE) % PATCH_SIZE
+        if pad_r > 0 or pad_b > 0:
+            print(f"[DEBUG] Padding image from {w}x{h} to {w+pad_r}x{h+pad_b} for CogViT compatibility")
+            image = ImageOps.expand(image, border=(0, 0, pad_r, pad_b), fill=(255, 255, 255))
+
         buffer = io.BytesIO()
         image.save(buffer, format='PNG')
         return base64.b64encode(buffer.getvalue()).decode('utf-8')
