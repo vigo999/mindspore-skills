@@ -396,7 +396,47 @@ MindSporeTest/
 
 ---
 
-## 9. 调试测试用例
+## 9. arg_mark 装饰器规范
+
+### 强制要求：mem_peak
+
+`arg_mark` 在以下条件**同时满足**时，强制要求提供 `mem_peak` 参数，否则 pytest 收集阶段直接抛出 `ValueError: wrong mem_peak value`：
+
+- `card_mark='onecard'`
+- `plat_marks` 包含 `'platform_ascend'` 或 `'platform_ascend910b'`
+- `level_mark` 为 `'level0'` 或 `'level1'`
+
+```python
+# 错误写法 — 会在 collect 阶段报错
+@arg_mark(plat_marks=['platform_ascend', 'platform_gpu', 'cpu_linux'],
+          level_mark='level0', card_mark='onecard', essential_mark='essential')
+
+# 正确写法 — 必须加 mem_peak
+@arg_mark(plat_marks=['platform_ascend', 'platform_gpu', 'cpu_linux'],
+          level_mark='level0', card_mark='onecard', essential_mark='essential',
+          mem_peak=1024.0)
+```
+
+`mem_peak` 单位为 MB，表示该用例预期的峰值显存占用。对于小型算子测试，`1024.0` 是合理的默认值。
+
+### 不需要 mem_peak 的情况
+
+- `plat_marks` 不含 `ascend`（纯 GPU/CPU 用例）
+- `level_mark` 为 `'level2'` 及以上
+- `card_mark` 为 `'allcards'`
+
+### PR 审查检查点
+
+审查包含新测试用例的 PR 时，检查所有 `platform_ascend + level0/level1 + onecard` 组合的 `arg_mark` 是否都有 `mem_peak`：
+
+```bash
+# 找出缺少 mem_peak 的 arg_mark（粗略检查）
+grep -n "platform_ascend" tests/st/ops/test_func_xxx.py | grep "level0\|level1"
+```
+
+---
+
+## 10. 调试测试用例
 
 ### 常用 pytest 参数
 

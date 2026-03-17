@@ -368,3 +368,82 @@ import json
 # ... 参考 scripts/extract_cases.py 中的 main() 逻辑
 "
 ```
+
+## 部署模式
+
+本 skill 的 6 步工作流对执行环境有不同要求：
+
+| 步骤 | 环境要求 |
+|------|---------|
+| Step 1-2 问题分析/定界 | 仅需知识库，无硬件依赖 |
+| Step 3-4 定位/修复 | 需要 MindSpore 源码仓库 |
+| Step 5-6 验证/测试 | 需要编译环境 + CANN + Ascend 硬件 |
+
+### 推荐：远程服务器执行模式
+
+将 Claude Code 和本 skill 直接部署到 Ascend 服务器上运行，所有步骤在同一台机器上本地执行。
+
+**优势**：
+- 零延迟：文件操作和编译测试都是本地 I/O
+- 零开发成本：无需额外工具，Claude Code 原生能力即可覆盖全流程
+- 高可靠性：不依赖网络传输，不会因连接中断导致操作失败
+
+**部署方法**：
+
+```bash
+# 方式一：使用同步脚本（从本地推送到服务器）
+bash scripts/sync-to-server.sh user@server
+
+# 方式二：在服务器上直接克隆
+git clone <repo-url> ~/mindspore-ops-debugger
+```
+
+详细部署步骤参见 `docs/remote-execution-guide.md`。
+
+### 本地 SSH 远程操作模式
+
+Claude Code 在本地运行，通过 `ssh` 命令操作远程 Ascend 服务器。适用于本地开发、审查 PR diff 并在远程验证的场景。
+
+#### 标准工作流
+
+```bash
+# 1. 上传 diff 文件到服务器
+scp /path/to/patch.diff user@server:/home/work/mindspore/patch.diff
+
+# 2. 检查补丁是否能干净应用
+ssh user@server "cd /home/work/mindspore && git apply --check patch.diff"
+
+# 3. 应用补丁
+ssh user@server "cd /home/work/mindspore && git apply patch.diff && git diff --stat"
+
+# 4. 增量编译（仅修改了 Python 文件时可跳过）
+ssh user@server "cd /home/work && source env_ms.sh mindspore/ && cd mindspore && bash build.sh -e ascend -V 910b -j64 -S on"
+
+# 5. 运行测试
+ssh user@server "cd /home/work && source env_ms.sh mindspore/ && cd mindspore && pytest tests/st/ops/test_func_xxx.py -v"
+```
+
+#### 关键注意事项
+
+**必须 source env_ms.sh**：每次 SSH 执行 Python/pytest 命令前，都必须先 `source env_ms.sh mindspore/`，否则 `PYTHONPATH` 未设置，`import mindspore` 会失败或加载系统安装版本而非编译版本。
+
+```bash
+# 错误：直接运行
+ssh user@server "cd /home/work/mindspore && pytest tests/st/ops/test_xxx.py"
+
+# 正确：先 source 环境
+ssh user@server "cd /home/work && source env_ms.sh mindspore/ && cd mindspore && pytest tests/st/ops/test_xxx.py"
+```
+
+**纯 Python 修改无需重新编译**：如果补丁只修改了 `.py` 文件（如 `ops/function/math_func.py`、`tests/st/ops/` 下的测试文件），无需重新编译，直接运行测试即可。只有修改了 C++ 源码（`ccsrc/`、`core/`）才需要增量编译。
+
+**后台编译监控**：编译耗时较长时，用后台任务监控进程结束：
+
+```bash
+# 监控编译进程（替换 PID 为实际编译进程 ID）
+ssh user@server "while ps -p {PID} > /dev/null 2>&1; do sleep 30; echo 'building...'; done; echo 'done'"
+```
+
+### 未来：Service-Client 模式（规划中）
+
+Claude Code 在本地运行，通过 SSH/MCP 工具操作远程服务器。适用于需要同时管理多台服务器或偏好本地开发环境的场景。该模式需要开发 MCP 远程工具，目前尚未实现。
