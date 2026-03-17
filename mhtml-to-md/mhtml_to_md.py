@@ -12,6 +12,7 @@ import argparse
 import base64
 import requests
 import urllib3
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from email.header import decode_header
 from bs4 import BeautifulSoup
@@ -97,7 +98,8 @@ class OllamaExtractor:
             image = Image.open(io.BytesIO(image))
         elif isinstance(image, np.ndarray):
             image = Image.fromarray(image)
-        
+
+        # Optimize: Only convert if not already RGB
         if image.mode != 'RGB':
             image = image.convert('RGB')
 
@@ -117,14 +119,14 @@ class OllamaExtractor:
                 new_w = MAX_DIM - PATCH_SIZE
             if new_h == MAX_DIM:
                 new_h = MAX_DIM - PATCH_SIZE
-            image = image.resize((new_w, new_h), Image.LANCZOS)
+            # Optimize: Use BILINEAR for faster resizing (slight quality trade-off)
+            image = image.resize((new_w, new_h), Image.BILINEAR)
             w, h = image.size
 
         # Pad to nearest multiple of patch size with white pixels
         pad_r = (PATCH_SIZE - w % PATCH_SIZE) % PATCH_SIZE
         pad_b = (PATCH_SIZE - h % PATCH_SIZE) % PATCH_SIZE
         if pad_r > 0 or pad_b > 0:
-            print(f"[DEBUG] Padding image from {w}x{h} to {w+pad_r}x{h+pad_b} for CogViT compatibility")
             image = ImageOps.expand(image, border=(0, 0, pad_r, pad_b), fill=(255, 255, 255))
 
         buffer = io.BytesIO()
@@ -167,37 +169,48 @@ class OllamaExtractor:
             base64_image = self._image_to_base64(image)
             if not base64_image:
                 return None
-            
+
             payload = {
                 "model": self.model,
                 "prompt": "提取这张截图里的文字内容。要求：1. 严格保留原始缩进和格式 2. 保留所有括号、引号、冒号等符号 3. 输出纯文本，不要markdown格式 4. 不要任何额外解释",
                 "images": [base64_image],
                 "stream": False
             }
-            
-            response = requests.post(
-                'http://localhost:11434/api/generate',
-                json=payload,
-                timeout=300
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                if 'response' in result:
-                    text = result['response']
-                    text = re.sub(r'^```\w*\n', '', text)
-                    text = re.sub(r'\n```$', '', text)
-                    text = text.strip()
-                    
-                    if '<table>' in text.lower():
-                        md_table = html_table_to_markdown(text)
-                        if md_table:
-                            return md_table
-                    
-                    return text
-                raise OCRExtractionError(f"OCR failed: empty response from model")
-            else:
-                raise OCRExtractionError(f"Ollama API error: {response.status_code} - {response.text[:200]}")
+
+            try:
+                response = requests.post(
+                    'http://localhost:11434/api/generate',
+                    json=payload,
+                    timeout=60  # Reduce timeout to fail fast on problematic images
+                )
+
+                if response.status_code == 200:
+                    result = response.json()
+                    if 'response' in result:
+                        text = result['response']
+                        text = re.sub(r'^```\w*\n', '', text)
+                        text = re.sub(r'\n```$', '', text)
+                        text = text.strip()
+
+                        if '<table>' in text.lower():
+                            md_table = html_table_to_markdown(text)
+                            if md_table:
+                                return md_table
+
+                        return text
+                    raise OCRExtractionError(f"OCR failed: empty response from model")
+                else:
+                    error_text = response.text[:200]
+                    # Check if it's a CogViT crash - skip this image instead of crashing the whole process
+                    if 'GGML_ASSERT' in error_text or 'runner process no longer running' in error_text:
+                        print(f"[WARN] Skipping image due to CogViT incompatibility")
+                        return None  # Skip problematic image gracefully
+                    raise OCRExtractionError(f"Ollama API error: {response.status_code} - {error_text}")
+
+            except requests.exceptions.Timeout:
+                # Timeout likely means CogViT crashed - skip this image
+                print(f"[WARN] OCR timeout, skipping image (likely CogViT incompatibility)")
+                return None
             
         except requests.exceptions.ConnectionError:
             raise OCRExtractionError("Ollama server not running. Please start Ollama with: ollama serve")
@@ -1037,20 +1050,28 @@ Examples:
     
     if args.jobs > 1:
         print(f"Using {args.jobs} parallel jobs")
-        
+
+        # Thread-local storage for OCR extractors (one per thread, not per file)
+        thread_local = threading.local()
+
+        def get_thread_ocr_extractor():
+            if not hasattr(thread_local, 'ocr_extractor'):
+                thread_local.ocr_extractor = None if args.no_ocr else get_ocr_extractor()
+            return thread_local.ocr_extractor
+
         def process_file(mhtml_file):
             try:
                 result = convert_mhtml_to_markdown(
                     mhtml_file,
                     output_dir=output_dir,
-                    ocr_extractor=ocr_extractor,
+                    ocr_extractor=get_thread_ocr_extractor(),
                     force=args.force
                 )
                 return (mhtml_file, result, None)
             except Exception as e:
                 import traceback
                 return (mhtml_file, None, str(e) + "\n" + traceback.format_exc())
-        
+
         with ThreadPoolExecutor(max_workers=args.jobs) as executor:
             futures = {executor.submit(process_file, f): f for f in mhtml_files}
             for future in as_completed(futures):
