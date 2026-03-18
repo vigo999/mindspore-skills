@@ -1,8 +1,8 @@
 schema_version: "1.1.0"
 name: "setup-agent"
 display_name: "Setup Agent"
-description: "Validate and prepare execution environment for training or remote execution."
-version: "0.1.0"
+description: "Validate and fix the runtime environment for Ascend NPU (driver ↔ CANN ↔ MindSpore) or Nvidia GPU (driver ↔ CUDA ↔ PyTorch) workloads, with HuggingFace dependency checks and auto-fix."
+version: "0.2.0"
 
 entry:
   type: "manual"
@@ -40,5 +40,11 @@ dependencies:
 
 tags:
   - "mindspore"
+  - "pytorch"
+  - "ascend"
+  - "nvidia"
+  - "cuda"
+  - "cann"
   - "environment"
   - "setup"
+  - "huggingface"
