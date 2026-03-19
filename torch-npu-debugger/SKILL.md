@@ -65,14 +65,29 @@ torch_npu 源码在用户的工作目录下：
 
 ```
 报错信息
+├─ import 失败
+│  ├─ "undefined symbol" 含 cxx11 → GCC ABI 不匹配
+│  ├─ "Unsupported soc version" → torch_npu 版本过旧
+│  ├─ 调用栈含 triton → 卸载 triton 或设 TORCH_DEVICE_BACKEND_AUTOLOAD=0
+│  └─ _lazy_init 卡死 → 驱动异常，lspci | grep ascend
+├─ 编译错误
+│  ├─ "undefined reference to op_api::*" → op-plugin submodule 不对齐
+│  ├─ "is not a member of OpCommand" → op-plugin 比 torch_npu 新
+│  ├─ error code 500002 → GE 图编译失败，查 plog
+│  └─ "ld: cannot find" → GCC 版本不兼容
 ├─ "not implemented for 'PrivateUse1'" → 算子未注册，检查 TORCH_LIBRARY_IMPL
 ├─ "ACL_ERROR_*" / "EZ9999" → ACLNN 层错误，检查 opapi/ 实现
+│  ├─ 161002 + CheckAxisRange → opapi infershape 错误
+│  └─ 0x800000 MTE 越界 → 检查 gen_opapi out dtype
+├─ ATB "setup failed" → 开启 ASDOPS_LOG_LEVEL=INFO 查看 dtype 组合
 ├─ "format mismatch" / "TransData" → Format 转换问题，检查 FormatHelper
 ├─ allclose 失败 / 精度偏差 → 精度问题，对比 CPU/GPU 结果
+│  ├─ matmul 相关 → 试 CLOSE_MATMUL_K_SHIFT=1
+│  └─ 非连续 tensor → 检查 out 参数写入逻辑
 ├─ "undefined symbol: aclnn*" → ACLNN 符号缺失，检查 CANN 版本
-├─ 编译错误 → 检查 ci/build.sh 和头文件依赖
+├─ EJ0001 HCCL 失败 → 检查残留进程，kill 后等 10 秒
 ├─ "stream sync" / SIGSEGV → 运行时问题，启用 ASCEND_LAUNCH_BLOCKING=1
-└─ 性能退化 → 检查 format 转换和 task queue 模式
+└─ 性能退化 → 检查 format 转换、task queue、MLIR fallback
 ```
 
 #### 2.2 确定问题层
@@ -82,11 +97,14 @@ torch_npu 的问题通常出在以下层之一：
 | 层 | 路径 | 典型问题 |
 |----|------|---------|
 | 算子注册/分发 | `op-plugin/codegen/`, `torchnpugen/` | dispatch key 错误、算子未注册 |
-| ACLNN 算子实现 | `op-plugin/ops/opapi/` | 参数不匹配、dtype 处理错误 |
+| ACLNN 算子实现 | `op-plugin/ops/opapi/` | 参数不匹配、dtype 处理错误、infershape 错误 |
 | ACL 算子实现 | `op-plugin/ops/aclops/` | 旧路径兼容性问题 |
+| 自定义算子/ATB | `op-plugin/ops/atb/` | ATB dtype 约束、gen_opapi 配置错误 |
 | 框架层 | `torch_npu/csrc/framework/` | OpCommand、Format、OpHook |
 | 运行时 | `torch_npu/csrc/core/npu/` | 内存、Stream、Event |
+| 分布式 | `torch_npu/csrc/distributed/` | HCCL 通信域、集合通信 |
 | Python 层 | `torch_npu/npu/` | Python 绑定、模块初始化 |
+| 编译/版本配套 | `ci/`, `CMakeLists.txt`, `setup.py` | 版本三元组不匹配、GCC 兼容性 |
 
 ### Step 3: 定位
 

@@ -7,10 +7,13 @@
 3. [算子注册与分发问题](#3-算子注册与分发问题)
 4. [Shape 与 Format 问题](#4-shape-与-format-问题)
 5. [ACLNN 适配问题](#5-aclnn-适配问题)
-6. [编译问题](#6-编译问题)
+6. [编译与版本配套问题](#6-编译与版本配套问题)
 7. [运行时问题](#7-运行时问题)
 8. [性能问题](#8-性能问题)
-9. [快速定界决策树](#9-快速定界决策树)
+9. [分布式与 HCCL 问题](#9-分布式与-hccl-问题)
+10. [环境兼容性问题](#10-环境兼容性问题)
+11. [自定义算子与 ATB 问题](#11-自定义算子与-atb-问题)
+12. [快速定界决策树](#12-快速定界决策树)
 
 ---
 
@@ -18,13 +21,16 @@
 
 | 分类 | 占比(估) | 涉及组件 |
 |------|---------|---------|
-| 精度/数值 | ~25% | opapi/aclops kernel, CANN |
-| 算子注册/分发 | ~15% | codegen, TORCH_LIBRARY_IMPL |
-| Shape/Format | ~15% | FormatHelper, npu_preparation |
-| ACLNN 适配 | ~15% | op_api_common.h, CANN headers |
-| 编译 | ~10% | ci/build.sh, CMake, headers |
-| 运行时 | ~10% | Stream, Allocator, ACL interface |
-| 性能 | ~10% | Format 转换, task queue |
+| 精度/数值 | ~20% | opapi/aclops kernel, CANN |
+| 算子注册/分发 | ~10% | codegen, TORCH_LIBRARY_IMPL |
+| Shape/Format | ~10% | FormatHelper, npu_preparation |
+| ACLNN 适配 | ~10% | op_api_common.h, CANN headers |
+| 编译/版本配套 | ~15% | ci/build.sh, CMake, CANN/op-plugin 版本 |
+| 运行时/驱动 | ~10% | Stream, Allocator, ACL interface, 驱动/固件 |
+| 分布式/HCCL | ~8% | ProcessGroupHCCL, HCCL 通信域 |
+| 环境兼容性 | ~7% | GCC ABI, SoC 版本, triton 冲突 |
+| 性能 | ~5% | Format 转换, task queue, MLIR fallback |
+| 自定义算子/ATB | ~5% | gen_opapi, ATB 算子, 结构化适配 |
 
 ---
 
@@ -49,11 +55,15 @@
 | 根因 | 说明 | 定位方向 |
 |------|------|---------|
 | **fp16 精度不足** | NPU fp16 计算溢出或精度丢失 | 检查是否需要 dtype 提升 |
+| **MatMul K-shift 优化** | 910B4 上 MatMul K 轴 shift 优化引入数值误差，切分计算与整体计算结果不一致 | 设置 `CLOSE_MATMUL_K_SHIFT=1` 关闭优化验证 |
+| **非连续 tensor** | `narrow/stride/transpose` 后的 tensor 作为输入或 `out` 参数时，写入位置计算错误 | 专门构造非连续 tensor 对比 CPU/NPU 结果 |
 | **ACLNN 特殊值处理** | aclnn 算子对 inf/nan 处理不正确 | 对比 CPU 结果，检查 ACLNN 实现 |
 | **dtype 未正确传递** | 输入 dtype 在转换过程中丢失 | 检查 npu_preparation 和 dtype 推导 |
 | **CANN 内核变更** | CANN 升级后算子计算行为变化 | 对比不同 CANN 版本结果 |
 | **反向传播精度** | backward 中累加误差或 dtype 降级 | 检查 grad 函数的 dtype 处理 |
 | **Format 转换精度损失** | NZ/FRACTAL_Z 格式转换引入误差 | 检查 FormatHelper 转换路径 |
+| **GE 初始化顺序** | `set_device()` 提前触发 GEInitialize，precision_mode 参数未传入，默认低精度 | plog 搜 `PrecisionMode`，避免在配置完成前调用 `set_device()` |
+| **CPU fallback 误导** | 算子 NPU 未实现回退 CPU 执行，但 CPU 实现本身有 bug | 观察 warning 区分"NPU 未实现"和"CPU 本身有 bug" |
 
 ### 诊断步骤
 
@@ -61,7 +71,9 @@
 2. 对比基准: 同样输入在 CPU 上的结果
 3. 隔离 dtype: 用 float32 测试是否仍有偏差
 4. 检查特殊值: 输入是否包含 inf/nan/极值
-5. 检查 CANN: 对比不同 CANN 版本的结果
+5. 检查非连续: 输入/输出 tensor 是否为 `narrow/stride/transpose` 后的非连续 tensor
+6. 检查 MatMul: 如涉及 matmul，试 `CLOSE_MATMUL_K_SHIFT=1`
+7. 检查 CANN: 对比不同 CANN 版本的结果
 
 ### 二级定界决策
 
@@ -72,7 +84,11 @@ allclose 失败
 ├─ 小幅偏差 (< 1e-3) → 累加精度或 CANN 变更
 ├─ 大幅偏差 → 逻辑错误或参数传递错误
 ├─ 仅 fp16/bf16 偏差 → dtype 提升缺失
-└─ 仅反向偏差，正向正常 → 检查 backward 实现
+├─ 仅反向偏差，正向正常 → 检查 backward 实现
+├─ 切分计算与整体计算不一致 → MatMul K-shift 优化，试 CLOSE_MATMUL_K_SHIFT=1
+├─ 非连续 tensor 结果偏移 → 检查 out 参数写入逻辑（如 logspace.out）
+├─ set_device() 后精度降低 → GE 初始化顺序问题，plog 搜 PrecisionMode
+└─ warning 提示 CPU 执行但结果仍错 → CPU fallback 路径本身有 bug
 ```
 
 ---
@@ -175,32 +191,63 @@ NPU 使用私有张量格式以优化计算性能：
 
 ---
 
-## 6. 编译问题
+## 6. 编译与版本配套问题
 
 ### 诊断特征
 
 **典型错误信息**:
 - `fatal error: xxx.h: No such file or directory`
-- `undefined reference to 'xxx'`
+- `undefined reference to 'xxx'` / `undefined reference to op_api::*`
 - `error: no matching function for call to 'xxx'`
+- `'RunOpApiV2' is not a member of 'at_npu::native::OpCommand'`
+- `ld: cannot find -lstdc++fs` / `ld: cannot find -ltorch_npu`
+- `is_convertible_v was not declared in this scope`
 - 增量编译后链接失败
 
 ### 常见根因
 
 | 根因 | 说明 | 定位方向 |
 |------|------|---------|
+| **版本三元组不匹配** | CANN + torch_npu + op-plugin 三者版本必须严格匹配 | 检查版本配套表 |
+| **op-plugin submodule 不对齐** | op-plugin commit 与 torch_npu tag 不匹配，导致大量 `undefined reference to op_api::*` | 检查 `git submodule status` |
+| **OpCommand API 版本不匹配** | op-plugin 引用了 `OpCommand::RunOpApiV2` 等新方法，但 torch_npu 尚未实现 | 不能混用更新的 op-plugin |
+| **GCC 版本不兼容** | GCC 7.3 和 GCC 13.2 均不兼容，推荐 GCC 9.x | `conda install -c conda-forge gxx=9 gcc=9` |
+| **C++ 标准降级** | CMakeLists.txt 中 `CMAKE_CXX_STANDARD` 被错误设为 14 | 检查 `is_convertible_v`、`if constexpr` 等 C++17 特性报错 |
+| **opp_kernel 包缺失** | CANN 环境缺少对应芯片的 opp_kernel 包 | 错误码 500002 = GE 图编译失败，查 plog 首报错 |
+| **头文件前向声明缺失** | `AclOpCompileInterface.h` 中 `executor` 未声明 | 添加 `struct aclopExecute;` 前向声明 |
 | **头文件依赖** | CANN 头文件路径变更或缺失 | 检查 CMakeLists.txt include 路径 |
 | **增量编译失败** | 缓存的 .o 文件与新代码不兼容 | 清理 build/ 目录后重新编译 |
-| **CANN 版本不匹配** | 代码使用了新 CANN API 但环境是旧版 | 检查 CANN 版本兼容性 |
-| **op-plugin 子模块未更新** | third_party/op-plugin 版本不对 | `git submodule update --init` |
 | **Python 版本不匹配** | 编译时和运行时 Python 版本不同 | 检查 `--python=3.9` 参数 |
+
+### 版本配套决策树
+
+```
+编译失败
+├─ "undefined reference to op_api::*" → op-plugin submodule commit 与 torch_npu tag 不对齐
+├─ "is not a member of OpCommand" → op-plugin 比 torch_npu 新，降级 op-plugin 或升级 torch_npu
+├─ "No such file or directory: aclnn*.h" → CANN 版本过旧，缺少新 ACLNN 头文件
+├─ "ld: cannot find -lstdc++fs" → GCC 版本不兼容（过旧或过新），推荐 GCC 9.x
+├─ "is_convertible_v was not declared" → C++ 标准被降级为 C++14，需改回 C++17
+├─ error code 500002 → GE 图编译失败，查 plog，检查 opp_kernel 包
+├─ "Failed to load the backend extension: torch_npu" → 版本三元组不兼容，需完整 traceback
+└─ "executor was not declared" → 头文件前向声明缺失
+```
+
+### 调试技巧
+
+- 修改 `setup.py` 将 `subprocess.check_call` 改为 `subprocess.check_output` 可捕获详细编译错误
+- plog 路径: `$HOME/ascend/log/debug/plog/plog-pid_*.log`
+- EulerOS 上可能需要 `ln -s /usr/lib64/libpthread.a /usr/lib64/libpthread_nonshared.a`
+- `torch.compile` 的 inductor 后端 C++ 编译失败（`CppCompileError`）首先检查 GCC 版本
 
 ### 诊断步骤
 
-1. 清理重编: `rm -rf build/ && bash ci/build.sh --python=3.9`
+1. 检查版本三元组: CANN 版本、torch_npu 版本、op-plugin commit
 2. 检查子模块: `git submodule status`
-3. 检查 CANN: 确认 CANN toolkit 路径和版本
-4. 检查 CMake 日志: `build/CMakeFiles/CMakeError.log`
+3. 检查 GCC: `gcc --version`，推荐 9.x
+4. 清理重编: `rm -rf build/ && bash ci/build.sh --python=3.9`
+5. 检查 CMake 日志: `build/CMakeFiles/CMakeError.log`
+6. 检查 plog: `$HOME/ascend/log/debug/plog/plog-pid_*.log`
 
 ---
 
@@ -213,6 +260,8 @@ NPU 使用私有张量格式以优化计算性能：
 - `ACL_ERROR_RT_*` 运行时错误
 - `stream sync failed`
 - `device memory not enough` / OOM
+- `EZ9999` / `error code = 0x800000`（AICore/MTE 硬件级错误）
+- `_lazy_init` 卡死 / import 阶段崩溃
 
 ### 常见根因
 
@@ -223,13 +272,32 @@ NPU 使用私有张量格式以优化计算性能：
 | **显存不足** | NPU 显存 OOM | 检查 batch size 和模型大小 |
 | **设备未初始化** | 未正确初始化 NPU 设备 | 检查 torch.npu.set_device() |
 | **多 stream 竞争** | 多个 stream 访问同一内存 | 检查 stream 同步点 |
+| **驱动/固件异常** | 驱动未加载或版本不匹配 | `lspci \| grep -i ascend` 验证驱动，gdb 采集堆栈 |
+| **多框架共卡** | torch_npu 和 MindSpore 同时使用同一张卡 | 用 `ASCEND_RT_VISIBLE_DEVICES` 做设备隔离 |
+| **ACL API 返回值越界** | ACL API 返回的 count/size 未做上界保护 | 加 `MAX_*` 上界保护 |
+| **HBM 内存泄漏** | 进程异常退出未释放 HBM | `npu-smi info` 检查，重启服务或重置设备 |
+| **异步错误延迟** | 异步执行导致错误报告位置不准确 | 在关键点插入 `synchronize()` |
+
+### EZ9999 / AICore 错误诊断
+
+EZ9999 是 AICore 硬件级错误，不一定是算子 bug：
+
+```
+EZ9999 / error code = 0x800000
+├─ 多框架共卡 → 先做单框架隔离测试
+├─ 日志中 vec/mte/ifu/ccu error info → 区分哪个计算单元出错
+├─ pc start/current 地址 → 配合 dump 工具定位出错算子
+└─ 单独运行可复现 → 算子本身 bug，提 CANN issue
+```
 
 ### 诊断步骤
 
 1. 同步执行: `export ASCEND_LAUNCH_BLOCKING=1` 定位异步错误
 2. 检查内存: `torch.npu.memory_summary()` 查看显存使用
-3. 最小复现: 缩小输入规模，确认是否为 OOM
-4. 检查堆栈: 使用 gdb 或 ASAN 定位 SIGSEGV
+3. 检查驱动: `lspci | grep -i ascend`，`npu-smi info`
+4. 最小复现: 缩小输入规模，确认是否为 OOM
+5. 检查堆栈: 使用 gdb 或 ASAN 定位 SIGSEGV
+6. 隔离测试: 确认是否有多框架/多进程共卡
 
 ---
 
@@ -251,6 +319,8 @@ NPU 使用私有张量格式以优化计算性能：
 | **同步执行** | ASCEND_LAUNCH_BLOCKING=1 未关闭 | 确认环境变量 |
 | **算子回退到 CPU** | 算子未注册 NPU 实现，fallback 到 CPU | 检查算子注册和 dispatch |
 | **非最优 ACLNN 路径** | 走了 aclops 而非 opapi | 检查 DO_COMPATIBILITY fallback |
+| **MLIR fallback 冗余算子** | `transform_args` 引入的 BroadcastTo/Cast 在 fallback 路径中不会被消除 | profiling `op_statistic` 表对比 eager vs fallback |
+| **隐式 D2H 同步** | 某些操作触发隐式 Device-to-Host 同步 | Profiler 定位热点 |
 
 ### 诊断步骤
 
@@ -258,22 +328,133 @@ NPU 使用私有张量格式以优化计算性能：
 2. 检查 format: 关注 TransData 操作的数量和耗时
 3. 检查 dispatch: 确认算子走的是 opapi 还是 aclops
 4. 检查环境变量: TASK_QUEUE_ENABLE, ASCEND_LAUNCH_BLOCKING
+5. 检查 op_statistic: 对比 eager 和 fallback 路径的算子数量
 
 ---
 
-## 9. 快速定界决策树
+## 9. 分布式与 HCCL 问题
+
+### 诊断特征
+
+**典型错误信息**:
+- `EJ0001: Failed to initialize the HCCP process`
+- `hcclCommInitRootInfoConfig` 报 `Failed to allocate memory`
+- `ProcessGroup does not support xxx`
+- 多卡训练卡死或超时
+
+### 常见根因
+
+| 根因 | 说明 | 定位方向 |
+|------|------|---------|
+| **残留进程** | 上次训练进程未完全退出，HCCP 资源未释放 | `ps aux \| grep python`，kill 后等 10 秒 |
+| **HCCL 内存不足** | 每个通信域初始化占用数百 MB 设备内存 | `npu-smi info` 确认显存，HCCL error code 2 = 内存不足 |
+| **通信域重复创建** | aclgraph 捕获期间重复初始化通信域 | 检查 capture 循环中的显存增长 |
+| **集合通信原语缺失** | HCCL 后端未实现某个原语（如 `allgather_coalesced`） | 升级 torch_npu 版本 |
+| **版本不匹配** | 升级 CANN 后 HCCL 库不兼容 | 检查 CANN + 驱动版本配套 |
+
+### 诊断步骤
+
+1. 检查残留进程: `ps aux | grep python`，kill 后等待 10 秒
+2. 检查显存: `npu-smi info`
+3. 单卡测试: 单卡可以跑、多卡报错 → 直接指向 HCCL 初始化问题
+4. 检查版本: CANN + 驱动 + torch_npu 版本配套
+
+---
+
+## 10. 环境兼容性问题
+
+### 诊断特征
+
+**典型错误信息**:
+- `undefined symbol: _ZNK5torch8autograd4Node4nameB5cxx11Ev`
+- `Unsupported soc version: AscendXXX`
+- `import torch_npu` 失败，调用栈含 triton
+- `_lazy_init` 卡死 / SIGSEGV（import 阶段）
+
+### 常见根因
+
+| 根因 | 说明 | 定位方向 |
+|------|------|---------|
+| **GCC ABI 不匹配** | torch 与 torch_npu 的 GCC ABI 版本不一致 | `torch.__config__.show()` 查 GCC 版本，whl 包名看 `manylinux` 后缀 |
+| **SoC 版本未注册** | torch_npu 版本过旧，不支持该 SoC 型号 | 升级 torch_npu 版本 |
+| **triton 冲突** | triton 包与 torch_npu 冲突导致 import 失败 | 卸载 triton 或设 `TORCH_DEVICE_BACKEND_AUTOLOAD=0` |
+| **驱动未加载** | 驱动安装异常，`lspci` 无输出 | 重装驱动/固件/CANN |
+| **transfer_to_npu 冲突** | `transfer_to_npu` 与 `torch.jit.script` 不兼容 | 不要同时使用，升级版本 |
+| **torch.compile 兼容性** | `torch._dynamo.exc.Unsupported` | 找 `from user code` 调用栈，检查 torch_npu wrapper 是否有 side effect |
+
+### 诊断步骤
+
+1. 检查 ABI: `torch.__config__.show()` 查看 GCC 版本
+2. 检查驱动: `lspci | grep -i ascend`
+3. 检查冲突包: `pip list | grep triton`
+4. 最小 import 测试: `python -c "import torch; import torch_npu; print(torch_npu.__version__)"`
+
+---
+
+## 11. 自定义算子与 ATB 问题
+
+### 诊断特征
+
+**典型错误信息**:
+- ATB 算子 `setup failed`
+- 错误码 `507015`（FFTS+ aivector 错误）
+- `0x800000`（MTE DDR 地址越界）
+- `CheckIniMatch Failed! Supported Combs:`
+
+### 常见根因
+
+| 根因 | 说明 | 定位方向 |
+|------|------|---------|
+| **ATB dtype 约束** | ATB 算子对 int32/int64 有严格区分，比 ACLNN 更严格 | 开启 `ASDOPS_LOG_LEVEL=INFO` 查看合法 dtype 组合 |
+| **gen_opapi dtype 硬编码** | `gen_opapi` 配置中 `out` 的 dtype 硬编码（如 `at::kFloat`），与实际输入不一致 | 检查 out dtype 是否动态推断 |
+| **opapi infershape 错误** | 输出 tensor 的 size/shape 计算有误 | ACLNN 报 `161002` + `CheckAxisRange/CheckShapeValid failed` |
+| **算子使用场景错误** | IFA 只用于 decode（S=1），FA 用于 prefill | tiling 报错通常意味着输入 shape 不符合算子使用约束 |
+
+### ATB 算子调试
+
+ATB 算子（`libop_plugin_atb.so`）的错误信息在 Python 层只显示 "setup failed"，必须开启日志才能看到真正原因：
+
+```bash
+export ASDOPS_LOG_LEVEL=INFO
+export ASDOPS_LOG_TO_STDOUT=1
+```
+
+日志中 `CheckIniMatch Failed! Supported Combs:` 会列出所有合法的 dtype 组合，直接对比入参即可定位。
+
+### 诊断步骤
+
+1. 开启 ATB 日志: `ASDOPS_LOG_LEVEL=INFO` + `ASDOPS_LOG_TO_STDOUT=1`
+2. 检查 dtype 组合: 对比日志中的 Supported Combs 与实际入参
+3. 检查 gen_opapi 配置: out 的 dtype 是否与输入对齐
+4. 区分 aclnn 直调 vs torch_npu 调用: aclnn 成功而 torch_npu 失败 → 问题在适配层
+
+---
+
+## 12. 快速定界决策树
 
 ```
 torch_npu 报错
 │
+├─ import 失败
+│  ├─ "undefined symbol" 含 cxx11 → GCC ABI 不匹配，torch.__config__.show() 查版本
+│  ├─ "Unsupported soc version" → torch_npu 版本过旧，升级
+│  ├─ 调用栈含 triton → 卸载 triton 或设 TORCH_DEVICE_BACKEND_AUTOLOAD=0
+│  ├─ _lazy_init 卡死 / SIGSEGV → 驱动异常，lspci | grep ascend，gdb 采集堆栈
+│  └─ "Failed to load the backend extension" → 版本三元组不兼容
+│
 ├─ 编译期错误
-│  ├─ "No such file or directory" → 头文件缺失，检查 CANN 路径
-│  ├─ "undefined reference" → 链接错误，检查库路径和 CANN 版本
-│  └─ "no matching function" → API 签名变更，检查 CANN 头文件
+│  ├─ "undefined reference to op_api::*" → op-plugin submodule 与 torch_npu tag 不对齐
+│  ├─ "is not a member of OpCommand" → op-plugin 比 torch_npu 新
+│  ├─ "No such file or directory: aclnn*.h" → CANN 版本过旧
+│  ├─ "ld: cannot find -lstdc++fs" → GCC 版本不兼容，推荐 9.x
+│  ├─ "is_convertible_v was not declared" → C++ 标准被降级为 C++14
+│  ├─ error code 500002 → GE 图编译失败，查 plog，检查 opp_kernel 包
+│  └─ "executor was not declared" → 头文件前向声明缺失
 │
 ├─ 运行期错误
 │  ├─ "not implemented for 'PrivateUse1'" → 算子未注册
 │  │  ├─ 新算子 → 需要添加 TORCH_LIBRARY_IMPL 注册
+│  │  ├─ 稀疏 tensor 输入 → NPU 不支持稀疏算子，改用密集等价实现
 │  │  └─ 已有算子 → 检查 dispatch key 和 codegen
 │  │
 │  ├─ "undefined symbol: aclnn*" → CANN 版本不支持
@@ -281,25 +462,47 @@ torch_npu 报错
 │  │  └─ 或升级 CANN 版本
 │  │
 │  ├─ "ACL_ERROR_*" / "EZ9999" → ACLNN 执行错误
+│  │  ├─ 161002 + CheckAxisRange/CheckShapeValid → opapi 层 infershape 错误
+│  │  ├─ 0x800000 MTE 越界 → 检查 gen_opapi 的 out dtype 配置
+│  │  ├─ 多框架共卡 → 用 ASCEND_RT_VISIBLE_DEVICES 隔离
 │  │  ├─ 参数错误 → 检查 dtype/shape/format 是否匹配
 │  │  ├─ 内部错误 → 可能是 CANN bug，尝试不同版本
 │  │  └─ 资源错误 → 检查显存和设备状态
 │  │
+│  ├─ ATB "setup failed" → 开启 ASDOPS_LOG_LEVEL=INFO 查看真正原因
+│  │  └─ CheckIniMatch Failed → dtype 组合不合法，对比 Supported Combs
+│  │
 │  ├─ "format mismatch" / TransData 失败 → Format 问题
-│  │  ├─ 检查输入 format 是否为算子支持的格式
+│  │  ├─ 检查 allow_internal_format 开关
+│  │  ├─ 检查 tensor 维度是否满足目标格式约束
 │  │  └─ 尝试 npu_format_cast 转为基础格式
 │  │
 │  ├─ SIGSEGV / 段错误 → 内存问题
 │  │  ├─ 启用 ASCEND_LAUNCH_BLOCKING=1 同步执行
+│  │  ├─ gdb 采集堆栈定位
 │  │  └─ 检查输出 tensor shape 是否正确
 │  │
-│  └─ OOM → 显存不足
-│     ├─ 减小 batch size
-│     └─ 检查是否有显存泄漏
+│  ├─ OOM → 显存不足
+│  │  ├─ 减小 batch size
+│  │  ├─ 检查 HCCL 通信域数量（每个占数百 MB）
+│  │  └─ 检查是否有显存泄漏（npu-smi info）
+│  │
+│  ├─ EJ0001 HCCL 初始化失败 → 检查残留进程，kill 后等 10 秒
+│  │
+│  ├─ "torch._dynamo.exc.Unsupported" → torch.compile 兼容性
+│  │  └─ 找 "from user code" 调用栈，检查 torch_npu wrapper side effect
+│  │
+│  └─ NpuFusedOptimizer 报错
+│     ├─ "set_to_none is not supported" → 改 set_to_none=False
+│     └─ aclnnInplaceAdd tensor size 不匹配 → 检查参数分组逻辑
 │
 └─ 精度问题
    ├─ 全零/全 NaN → 算子执行异常或 format 错误
    ├─ 小幅偏差 → fp16 精度或 CANN 变更
    ├─ 大幅偏差 → 逻辑错误或参数传递错误
-   └─ 仅特定 dtype → dtype 提升或转换缺失
+   ├─ 仅特定 dtype → dtype 提升或转换缺失
+   ├─ 切分计算不一致 → MatMul K-shift，试 CLOSE_MATMUL_K_SHIFT=1
+   ├─ 非连续 tensor 结果偏移 → 检查 out 参数写入逻辑
+   ├─ set_device() 后精度降低 → GE 初始化顺序，plog 搜 PrecisionMode
+   └─ warning 提示 CPU 执行但结果仍错 → CPU fallback 路径本身有 bug
 ```

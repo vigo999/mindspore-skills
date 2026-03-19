@@ -39,6 +39,8 @@ export ASCEND_GLOBAL_LOG_LEVEL=1
 export ASCEND_SLOG_PRINT_TO_STDOUT=1
 ```
 
+**plog 路径**: `$HOME/ascend/log/debug/plog/plog-pid_*.log`，运行前清理旧日志避免混淆。
+
 ### TORCH_NPU_LOG_LEVEL
 
 torch_npu 自身的日志级别：
@@ -54,6 +56,38 @@ export TORCH_NPU_LOG_LEVEL=DEBUG
 ```bash
 export ACL_DUMP_DATA=1
 ```
+
+### CLOSE_MATMUL_K_SHIFT
+
+关闭 MatMul K 轴 shift 优化（910B4 上可能引入数值误差）：
+
+```bash
+# When matmul precision is abnormal (split vs whole computation inconsistent)
+export CLOSE_MATMUL_K_SHIFT=1
+```
+
+**何时使用**: float16 下 matmul 切分计算与整体计算结果不一致时。
+
+### ATB 算子日志
+
+ATB 算子（`libop_plugin_atb.so`）的错误信息在 Python 层只显示 "setup failed"，必须开启日志：
+
+```bash
+export ASDOPS_LOG_LEVEL=INFO
+export ASDOPS_LOG_TO_STDOUT=1
+```
+
+**何时使用**: ATB 算子报 "setup failed" 时。日志中 `CheckIniMatch Failed! Supported Combs:` 会列出合法 dtype 组合。
+
+### TORCH_DEVICE_BACKEND_AUTOLOAD
+
+禁用设备后端自动加载（解决 triton 冲突）：
+
+```bash
+export TORCH_DEVICE_BACKEND_AUTOLOAD=0
+```
+
+**何时使用**: `import torch_npu` 失败且调用栈含 triton 时。
 
 ---
 
@@ -337,12 +371,34 @@ cat /usr/local/Ascend/ascend-toolkit/latest/version.cfg
 # Check NPU status
 npu-smi info
 
+# Check torch_npu version and config
+python -c "import torch; import torch_npu; print(torch_npu.__version__); print(torch.__config__.show())"
+
+# Check driver loaded
+lspci | grep -i ascend
+
+# Check GCC version (recommend 9.x for compilation)
+gcc --version
+
 # === Synchronous debugging ===
 export ASCEND_LAUNCH_BLOCKING=1
 
 # === Verbose logging ===
 export ASCEND_GLOBAL_LOG_LEVEL=1
 export ASCEND_SLOG_PRINT_TO_STDOUT=1
+
+# === plog path (check after errors) ===
+ls -lt $HOME/ascend/log/debug/plog/plog-pid_*.log | head -5
+
+# === ATB operator debugging ===
+export ASDOPS_LOG_LEVEL=INFO
+export ASDOPS_LOG_TO_STDOUT=1
+
+# === MatMul precision debugging ===
+export CLOSE_MATMUL_K_SHIFT=1
+
+# === triton conflict workaround ===
+export TORCH_DEVICE_BACKEND_AUTOLOAD=0
 
 # === Data dump ===
 export ACL_DUMP_DATA=1

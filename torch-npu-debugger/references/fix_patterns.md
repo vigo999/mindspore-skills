@@ -8,6 +8,10 @@
 4. [算子注册修复](#4-算子注册修复)
 5. [反向传播修复](#5-反向传播修复)
 6. [运行时修复](#6-运行时修复)
+7. [版本配套与环境修复](#7-版本配套与环境修复)
+8. [自定义算子与 ATB 修复](#8-自定义算子与-atb-修复)
+9. [非连续 tensor 修复](#9-非连续-tensor-修复)
+10. [ACL API 边界保护](#10-acl-api-边界保护)
 
 ---
 
@@ -338,4 +342,146 @@ at::Tensor xxx_npu(const at::Tensor& self, const at::Tensor& other) {
         self.device(), " and ", other.device());
     // ...
 }
+```
+
+---
+
+## 7. 版本配套与环境修复
+
+### 7.1 op-plugin submodule 对齐
+
+**问题**: 大量 `undefined reference to op_api::*`，op-plugin commit 与 torch_npu tag 不匹配。
+
+**修复**: 对齐 submodule 版本。
+
+```bash
+# Check current submodule status
+git submodule status
+
+# Reset to the correct commit for this torch_npu version
+git submodule update --init --recursive
+```
+
+### 7.2 GCC ABI 不匹配
+
+**问题**: `undefined symbol` 含 `cxx11`，torch 与 torch_npu 的 GCC ABI 版本不一致。
+
+**诊断**:
+
+```python
+# Check torch's GCC version
+import torch
+print(torch.__config__.show())
+# Look for GCC version, compare with whl package name (manylinux suffix)
+```
+
+**修复**: 重新下载与 torch GCC 版本匹配的 torch_npu whl 包。
+
+### 7.3 C++ 标准修复
+
+**问题**: `is_convertible_v was not declared`，C++ 标准被降级为 C++14。
+
+**修复**: 修改 CMakeLists.txt 和 setup.py。
+
+```cmake
+# CMakeLists.txt: change C++14 back to C++17
+set(CMAKE_CXX_STANDARD 17)
+```
+
+```python
+# setup.py: change extra_compile_args
+extra_compile_args = ['-std=c++17']
+```
+
+---
+
+## 8. 自定义算子与 ATB 修复
+
+### 8.1 ATB dtype 对齐
+
+**问题**: ATB 算子 "setup failed"，dtype 组合不合法（如 `torch.long` 应为 `torch.int32`）。
+
+**修复**: 对齐 dtype 到 ATB 支持的组合。
+
+```python
+# Before: ATB does not support int64 for block_table
+block_table = torch.randint(0, 10, (batch, max_blocks), dtype=torch.long).npu()
+
+# After: use int32
+block_table = torch.randint(0, 10, (batch, max_blocks), dtype=torch.int32).npu()
+```
+
+### 8.2 gen_opapi out dtype 动态推断
+
+**问题**: `gen_opapi` 配置中 `out` 的 dtype 硬编码为 `at::kFloat`，但输入是 `float16`，导致 MTE 越界（`0x800000`）。
+
+**修复**: out dtype 应动态推断或与输入对齐。
+
+```cpp
+// Before: hardcoded dtype
+auto result = npu_preparation::apply_tensor_without_format(
+    {x.size(0), y.size(1)}, x.options().dtype(at::kFloat));
+
+// After: use input dtype
+auto result = npu_preparation::apply_tensor_without_format(
+    {x.size(0), y.size(1)}, x.options());
+```
+
+### 8.3 opapi infershape 修复
+
+**问题**: ACLNN 报 `161002` + `CheckAxisRange/CheckShapeValid failed`，输出 tensor 的 size 计算有误。
+
+**修复**: 修正 opapi 中输出 tensor 的 size/shape 计算逻辑。
+
+```cpp
+// Before: wrong output size when num_classes != -1
+auto output_size = op_infer::array_to_small_vector(self.sizes());
+
+// After: correct output size calculation
+auto output_size = op_infer::array_to_small_vector(self.sizes());
+if (num_classes != -1) {
+    output_size.push_back(num_classes);
+}
+```
+
+---
+
+## 9. 非连续 tensor 修复
+
+### 9.1 out 参数非连续写入
+
+**问题**: `xxx.out` 在 `out` tensor 非连续且 shape 不等时，写入位置计算错误。
+
+**修复**: 在写入前确保 out tensor 连续，或修正写入逻辑。
+
+```cpp
+// Before: directly write to non-contiguous out
+EXEC_NPU_CMD(aclnnXxx, self, result);
+
+// After: ensure contiguous or use a temporary buffer
+at::Tensor result_contiguous = result.is_contiguous() ? result :
+    npu_preparation::apply_tensor_without_format(result.sizes(), result.options());
+EXEC_NPU_CMD(aclnnXxx, self, result_contiguous);
+if (!result.is_contiguous()) {
+    result.copy_(result_contiguous);
+}
+```
+
+---
+
+## 10. ACL API 边界保护
+
+### 10.1 外部返回值上界保护
+
+**问题**: ACL API 返回的 count/size 直接用作循环上界，可能导致越界。
+
+**修复**: 添加 MAX 上界保护。
+
+```cpp
+// Before: trust external value
+for (size_t i = 0; i < moduleCount; i++) { ... }
+
+// After: add upper bound protection
+constexpr size_t MAX_MODULE_NUM = 1024;
+for (size_t i = 0; i < std::min(moduleCount, MAX_MODULE_NUM); i++) { ... }
 ```

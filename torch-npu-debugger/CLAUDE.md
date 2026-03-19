@@ -8,7 +8,7 @@ A Claude Code skill (`SKILL.md`) for diagnosing and fixing torch_npu operator bu
 
 ## Skill Activation
 
-The skill triggers on keywords related to torch_npu operator issues: NPU operator bugs, ACLNN adaptation errors, precision anomalies, format conversion issues, dispatch key errors, DO_COMPATIBILITY fallback, OpCommand errors, compilation failures, stream sync problems, dtype mismatches, backward propagation issues, etc.
+The skill triggers on keywords related to torch_npu operator issues: NPU operator bugs, ACLNN adaptation errors, precision anomalies, format conversion issues, dispatch key errors, DO_COMPATIBILITY fallback, OpCommand errors, compilation failures, stream sync problems, dtype mismatches, backward propagation issues, HCCL distributed errors, ATB operator issues, version compatibility problems, import failures, triton conflicts, etc.
 
 ## Repository Structure
 
@@ -16,9 +16,9 @@ The skill triggers on keywords related to torch_npu operator issues: NPU operato
 SKILL.md                        # Skill definition, trigger conditions, and 6-step workflow
 references/
   architecture.md               # Source code navigation: two-layer architecture and path patterns
-  issue_patterns.md             # Problem classification (8 categories) and quick decision tree
-  fix_patterns.md               # Fix templates by component (ACLNN, format, dtype, registration, etc.)
-  debugging_tools.md            # Built-in debugging tools guide (OpHook, NPU Trace, dump, overflow)
+  issue_patterns.md             # Problem classification (12 categories) and quick decision tree
+  fix_patterns.md               # Fix templates by component (ACLNN, format, dtype, registration, ATB, version, etc.)
+  debugging_tools.md            # Built-in debugging tools guide (OpHook, NPU Trace, dump, overflow, ATB logs)
 scripts/
   sync-to-server.sh             # Rsync script for remote deployment
 ```
