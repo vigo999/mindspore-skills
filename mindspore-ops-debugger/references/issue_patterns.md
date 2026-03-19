@@ -57,6 +57,7 @@
 | **随机数不一致** | 旧模型未使用 mint 接口，随机数种子处理不同 | mindone I2VGenXLUNet NaN (#42126) |
 | **dtype 处理错误** | 输入 dtype 未正确处理或传递 | benchmark 忘记指定 dtype |
 | **aclnn 特殊值处理缺陷** | aclnn 算子对 inf/nan 等特殊值处理不正确，仅特定 dtype 触发 | Reciprocal complex64 inf → NaN (#42294)；sign float64 NaN → nan (#42296) |
+| **测试基准 backward 路径不对齐** | PyTorch 基准代码中参数类型导致走不同 backward 路径，bfloat16 下精度差异被放大 | repeat_interleave `torch.tensor(int)` vs `int` (#1574) |
 
 ### 诊断步骤
 
@@ -73,6 +74,7 @@
 - **CS-003 (#41931)**: mint.nn.Linear 偶现精度 — 大 k 轴 MatMul 累加误差
 - **CS-004 (#41933)**: CPU trace fp16 精度 — CPU 上 fp16 累加精度不足
 - **CS-005 (#41977)**: DeepSeek loss 偏差 — CANN matmul 变更导致
+- **CS-020 (#1574)**: repeat_interleave bfloat16 梯度偏差 — 测试基准 torch.tensor(int) 导致 backward 路径不对齐
 
 ### 二级定界决策
 
@@ -81,7 +83,8 @@ allclose 失败
 ├─ 输出全零 → 反向图结构问题 (Select/DeadNode)，参考 CS-001
 ├─ 输出全 NaN → dtype 溢出或未初始化，检查 fp16 计算链路
 ├─ 小幅偏差 (< 1e-3) → 累加精度或 CANN 变更，参考 CS-003/CS-005
-└─ 大幅偏差 → 逻辑错误或基准环境差异，参考 CS-002
+├─ 大幅偏差 → 逻辑错误或基准环境差异，参考 CS-002
+└─ 仅 bfloat16 梯度偏差，正向正常 → 检查基准 backward 路径是否对齐，参考 CS-020
 ```
 
 ### ⚠️ 误导性关键词
@@ -91,6 +94,7 @@ allclose 失败
 | allclose 精度失败 | bprop Select 缺陷 | CS-001 |
 | 精度不一致 | 基准框架版本差异 | CS-002 |
 | fp16 精度问题 | CPU kernel 未做精度提升 | CS-004 |
+| bfloat16 梯度偏差 | 测试基准 backward 路径不对齐 | CS-020 |
 
 ---
 

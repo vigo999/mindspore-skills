@@ -489,3 +489,27 @@ net.set_inputs(dyn_input)
 out1 = net(ms.Tensor(np.random.randn(3, 4).astype(np.float32)))
 out2 = net(ms.Tensor(np.random.randn(5, 4).astype(np.float32)))
 ```
+
+---
+
+## 10. 常见陷阱
+
+### PyTorch 基准参数类型影响 backward 路径
+
+编写 `grad_pytorch_impl` 时，确保传给 PyTorch 算子的参数类型与 MindSpore 侧一致。PyTorch 对不同参数类型可能走完全不同的 backward 路径，在低精度 dtype (bfloat16/fp16) 下产生不可忽略的精度差异。
+
+典型案例：`repeat_interleave` 的 `repeats` 参数
+
+```python
+# 错误: torch.tensor(int) 创建 0-d tensor，PyTorch 走 scatter_add backward
+repeats = torch.tensor(self.repeats)  # self.repeats = 6
+
+# 正确: 直接传 int，PyTorch 走 reshape+sum backward（与 MindSpore 一致）
+repeats = self.repeats
+```
+
+`torch.tensor(6)` 和 `6` 在 forward 结果完全一致，但 backward 路径不同：
+- `int` repeats → reshape + sum（与 MindSpore 的 SumExt 路径对齐）
+- `tensor` repeats → scatter_add（bfloat16 下累加精度不同）
+
+参考: CS-020 (#1574), M-014

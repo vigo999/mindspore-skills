@@ -656,6 +656,63 @@ for dt in [torch.float16, torch.float32, torch.float64]:
 
 ---
 
+## M-014: grad_cmp bfloat16 精度偏差实为测试基准 backward 路径不对齐
+
+### 表面现象
+`grad_cmp` 在 bfloat16 下失败，`allclose_nparray` 报告大量元素超出容差 (如 316542/2097152, max_diff=0.0625)，正向精度正常。
+
+### 常见误判
+定界到 **精度/数值** — MindSpore 反向 kernel 在 bfloat16 下精度不足
+
+### 正确定界
+**测试基准代码缺陷** - PyTorch 基准侧参数类型导致走了不同的 backward 路径
+
+### 判断依据
+1. 正向精度正常 (forward_cmp PASS)，仅反向有偏差
+2. 偏差在 bfloat16 下出现，float32 下两条路径结果一致
+3. 测试基准代码中 `repeats = torch.tensor(self.repeats)` 将 int 包装为 0-d tensor
+4. PyTorch 对 tensor repeats 和 int repeats 使用不同的 backward 实现
+
+### 验证实验
+```python
+import torch
+
+x = torch.randn(2048, 1, 8, 128, dtype=torch.bfloat16, requires_grad=True)
+grad_out = torch.randn(2048, 1, 48, 128, dtype=torch.bfloat16)
+
+# Path A: int repeats → reshape + sum backward
+y1 = x.repeat_interleave(6, dim=2)
+y1.backward(grad_out)
+grad_int = x.grad.clone()
+
+x.grad = None
+
+# Path B: tensor repeats → scatter_add backward
+y2 = x.repeat_interleave(torch.tensor(6), dim=2)
+y2.backward(grad_out)
+grad_tensor = x.grad.clone()
+
+# Compare: bfloat16 下两条路径结果不同
+diff = (grad_int.float() - grad_tensor.float()).abs()
+print(f"max_diff={diff.max()}, mismatch={( diff > 0.004).sum()}/{diff.numel()}")
+# max_diff=0.0625, mismatch > 0 → 路径不对齐导致的精度差异
+```
+
+### 根因类型
+- PyTorch `repeat_interleave` 对 int repeats 和 tensor repeats 使用不同 backward 路径
+- int repeats: reshape + sum (与 MindSpore 一致)
+- tensor repeats: scatter_add (累加精度在 bfloat16 下不同)
+- `torch.tensor(int_value)` 会将 int 转为 0-d tensor，触发 tensor 路径
+
+### 修复模式
+- 测试基准代码中确保 `repeats` 参数类型与 MindSpore 侧一致
+- `repeats = torch.tensor(self.repeats)` → `repeats = self.repeats`
+
+### 参考案例
+- **CS-020 (#1574)**: repeat_interleave bfloat16 梯度精度偏差
+
+---
+
 ## 持续更新
 
 每次发现新的误导模式，按以下模板添加：

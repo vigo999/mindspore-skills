@@ -305,6 +305,19 @@
 | 引入类型 | CANN aclnn 算子缺陷（平台特有） |
 | 关键教训 | 1) 返回值为 `2^31-1` 或 `-2^31` 是 float→int32 溢出的标志性特征 2) 同一 aclnn 算子在不同芯片型号（910A vs 910B）上可能有不同实现，需注意平台差异 3) 无法在目标平台复现时，可通过返回值特征（INT32_MAX）直接推断根因 4) `numpy.fix` 用 floor+ceil+select 组合实现可作为 workaround 参考 |
 
+### Case CS-020: repeat_interleave bfloat16 梯度精度偏差 (#1574)
+
+| 字段 | 内容 |
+|------|------|
+| 问题 | `Tensor.repeat_interleave` bfloat16 梯度 `grad_cmp` 失败，316542/2097152 元素超出容差 (max_diff=0.0625) |
+| 环境 | 910B3, CANN 20251121, PyNative |
+| 错误特征 | `allclose_nparray` 失败，梯度偏差集中在 bfloat16，正向精度正常 |
+| 定界过程 | 1) forward_cmp PASS → 正向无问题 2) grad_cmp FAIL → 反向精度偏差 3) MindSpore 使用 reshape+SumExt 路径 (PR !91183)，PyTorch 基准代码中 `repeats = torch.tensor(self.repeats)` 将 int 转为 tensor，导致 torch 走 scatter_add backward 路径 4) 两条 backward 路径在 bfloat16 下精度不同 → 定界到**测试基准代码** |
+| 根因 | 测试框架 `grad_pytorch_impl` 中 `repeats = torch.tensor(self.repeats)` 将 int repeats 包装为 0-d tensor，导致 PyTorch 走 tensor repeats 的 backward 路径 (scatter_add)，而 MindSpore 走 int repeats 的 backward 路径 (reshape+sum)。两条路径在 float32 下结果一致，但在 bfloat16 下 scatter_add 的累加精度与 reshape+sum 不同，产生 max_diff=0.0625 的偏差 |
+| 修复 | 测试基准代码中将 `repeats = torch.tensor(self.repeats)` 改为 `repeats = self.repeats`，确保 PyTorch 和 MindSpore 走相同的 backward 路径 |
+| 引入类型 | 测试基准代码缺陷 |
+| 关键教训 | 1) **`torch.tensor(int)` 与 `int` 在 PyTorch 中走不同的 backward 路径**：tensor repeats 用 scatter_add，int repeats 用 reshape+sum 2) bfloat16 下不同累加路径的精度差异会被放大 3) `grad_cmp` 失败时，不仅要检查 MindSpore 侧，还要检查 PyTorch 基准侧的参数类型是否与 MindSpore 对齐 4) 这是一类**误导性精度问题**：表面是 MindSpore 精度错误，实际是测试基准的 backward 路径不对齐 |
+
 ---
 
 ## 跨分类案例（误导性定界）
@@ -317,3 +330,4 @@
 | CS-009 (#41973) | Shape 推导 | 编译器 pass (DeadNode) | 错误信息是 AbstractProblem，但根因在 pass 缺失 |
 | CS-002 (#41934) | 精度/数值 | 基准环境 (TF 版本) | 看似 MS 精度问题，实际是 TF 基准代码的 dtype 处理 |
 | CS-013 (#41935) | Kernel 崩溃 | 线程安全 + optional 误用 | 堆栈指向 set 插入，但根因是执行路径判断错误 |
+| CS-020 (#1574) | 精度/数值 | 测试基准 backward 路径不对齐 | grad_cmp bfloat16 失败，看似 MindSpore 梯度精度问题，实际是 torch 基准用 `torch.tensor(int)` 走了不同 backward 路径 |
