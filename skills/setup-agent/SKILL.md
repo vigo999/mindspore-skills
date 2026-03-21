@@ -63,7 +63,7 @@ cat /etc/os-release 2>/dev/null
 ls /dev/davinci* 2>/dev/null
 npu-smi info 2>/dev/null
 cat /usr/local/Ascend/driver/version.info 2>/dev/null
-cat /usr/local/Ascend/ascend-toolkit/latest/version.cfg 2>/dev/null
+cat /usr/local/Ascend/firmware/version.info 2>/dev/null
 ls /usr/local/Ascend 2>/dev/null
 ```
 
@@ -305,29 +305,37 @@ Record whether the selected model came from:
 
 ### 7.3 Check scripts and checkpoint files
 
-The selected local or downloaded model directory becomes the artifact root for
-the remaining workspace checks and report output.
+Use two separate roots:
+- current work dir for training script discovery
+- selected local or downloaded model directory for checkpoint discovery
 
 Run:
 
 ```bash
-find . -type f -name "*.py" 2>/dev/null
-find . -type f \( -name "*.ckpt" -o -name "*.pt" -o -name "*.pth" -o -name "*.bin" -o -name "*.safetensors" \) 2>/dev/null
+find . \
+  \( -path "*/.venv" -o -path "*/.git" -o -path "*/__pycache__" -o -path "*/.cache" -o -path "*/node_modules" \) -prune \
+  -o -type f \
+  \( -iname "train*.py" -o -iname "finetune*.py" -o -iname "run*.py" -o -iname "main*.py" -o -path "*/scripts/train*.py" -o -path "*/scripts/finetune*.py" \) \
+  -print 2>/dev/null
+find "<selected_model_dir>" -type f \( -name "*.ckpt" -o -name "*.pt" -o -name "*.pth" -o -name "*.bin" -o -name "*.safetensors" \) 2>/dev/null
 ```
 
 Classification:
 - if `task_type=training`, training script check is `PASS` if one or more
-  `.py` files exist, otherwise `FAIL`
+  candidate training entry scripts exist, otherwise `FAIL`
 - if `task_type=inference`, missing training scripts are `INFO` rather than
   `FAIL`
 - checkpoint check is `PASS` if one or more `.ckpt`, `.pt`, `.pth`, `.bin`,
   or `.safetensors` files exist, otherwise `FAIL`
+- do not treat arbitrary utility or test Python files as training scripts
 - if files are found, print and record the matched training script paths and
   checkpoint paths
 
 If the selected workspace is missing training scripts or checkpoint files:
 - do not reclassify the Ascend driver/CANN/framework setup as failed
 - report it as a workspace-preparation failure or partial result
+- if multiple candidate training scripts exist, show the list and ask the user
+  which one is the intended entry script
 - if a selected model directory exists but required artifacts are still
   missing, tell the user exactly which artifacts are absent
 
@@ -338,7 +346,8 @@ Always end with:
   `references/execution-contract.md`
 - a final boxed mailbox summary using the fixed example format from
   `references/execution-contract.md`
-- standard report artifacts under `runs/<run_id>/out/`
+- console output only; do not write `.md` or `.json` result files during
+  setup-agent runs
 
 ## Out of Scope
 

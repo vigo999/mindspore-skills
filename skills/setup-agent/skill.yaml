@@ -53,10 +53,6 @@ inputs:
     default: "./models"
     description: "Root directory under the current work dir where downloaded Hugging Face models are stored."
 
-outputs:
-  report_schema: "skills/_shared/contract/report.schema.json"
-  out_dir_layout: "runs/<run_id>/out/"
-
 permissions:
   network: "required"
   filesystem: "workspace-write"

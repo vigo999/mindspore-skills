@@ -59,18 +59,13 @@ setup-agent : training scripts passed: ./train.py, ./scripts/finetune.py
 setup-agent : checkpoint files passed: ./weights/model.safetensors
 ```
 
-## Report Artifacts
+## Console Contract
 
-Every run must produce standard outputs under `runs/<run_id>/out/`:
+Do not write `.md`, `.json`, or other result artifacts under `runs/` during
+`setup-agent` execution. The run result is the streamed console output plus the
+final boxed mailbox summary.
 
-- `env_summary.md`
-- `report.json`
-- `report.md`
-- `artifacts/README.md`
-- `meta/env.json`
-- `meta/inputs.json`
-
-Required report content:
+The console output must still cover:
 - OS information
 - current work dir
 - NPU visibility and `npu-smi` result
@@ -98,7 +93,7 @@ Required report content:
   - matched training script paths
   - matched checkpoint paths
 - smoke test results
-- final environment summary that reflects any successful installs or repairs
+- final mailbox summary that reflects any successful installs or repairs
 - manual system-layer remediation steps if needed
 - the `https://www.hiascend.com/cann/download` link when Ascend driver,
   framework, or toolkit is missing
@@ -141,7 +136,7 @@ The final mailbox summary must include these fields in this exact order:
 
 Do not require intermediate `run.log` or `verify.log` files during environment
 checking. If a component is installed or repaired mid-run, reflect that only in
-the final mailbox summary and `env_summary.md`.
+the final mailbox summary.
 
 Formatting rules:
 - left label width is fixed at 10 characters before `:`

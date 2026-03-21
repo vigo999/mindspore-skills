@@ -47,7 +47,7 @@ def test_execution_reference_exists_and_has_required_sections():
     content = read_text(path)
     assert path.exists()
     assert "Streaming Console Output" in content
-    assert "Report Artifacts" in content
+    assert "Console Contract" in content
     assert "Final Mailbox Summary" in content
 
 
@@ -167,7 +167,10 @@ def test_skill_uses_snapshot_download_when_no_local_model_directory_exists():
 
 def test_skill_checks_training_scripts_and_checkpoints_after_model_selection():
     content = read_text(SKILL_MD)
-    assert 'find . -type f -name "*.py" 2>/dev/null' in content
+    assert '-iname "train*.py"' in content
+    assert '-iname "finetune*.py"' in content
+    assert '-iname "run*.py"' in content
+    assert '<selected_model_dir>' in content
     assert '-name "*.ckpt"' in content
     assert '-name "*.pt"' in content
     assert '-name "*.pth"' in content
@@ -176,12 +179,14 @@ def test_skill_checks_training_scripts_and_checkpoints_after_model_selection():
     assert "print and record the matched training script paths and" in content
     assert "checkpoint paths" in content
     assert "Record whether the selected model came from:" in content
+    assert "do not treat arbitrary utility or test Python files as training scripts" in content
 
 
 def test_skill_classifies_workspace_artifacts_by_task_type():
     content = read_text(SKILL_MD)
     assert "if `task_type=training`, training script check is `PASS`" in content
     assert "if `task_type=inference`, missing training scripts are `INFO` rather" in content
+    assert "candidate training entry scripts exist" in content
 
 
 def test_skill_guides_huggingface_download_when_artifacts_are_missing():
@@ -189,6 +194,7 @@ def test_skill_guides_huggingface_download_when_artifacts_are_missing():
     assert "do not reclassify the Ascend driver/CANN/framework setup as failed" in content
     assert "ask the user which Hugging Face model to download" in content
     assert "tell the user exactly which artifacts are absent" in content
+    assert "if multiple candidate training scripts exist, show the list and ask the user" in content
 
 
 def test_skill_reports_both_framework_paths():
@@ -198,13 +204,15 @@ def test_skill_reports_both_framework_paths():
     assert "If both framework paths are unhealthy, report both independently" in content
 
 
-def test_skill_documents_standard_reporting_contract():
+def test_skill_documents_console_only_contract():
     content = read_text(REFERENCES_DIR / "execution-contract.md")
-    assert "runs/<run_id>/out/" in content
-    assert "report.json" in content
-    assert "report.md" in content
-    assert "meta/env.json" in content
-    assert "meta/inputs.json" in content
+    assert "Do not write `.md`, `.json`, or other result artifacts under `runs/`" in content
+    assert "streamed console output plus the" in content
+    assert "final boxed mailbox summary" in content
+    assert "runs/<run_id>/out/" not in content
+    assert "report.json" not in content
+    assert "report.md" not in content
+    assert "env_summary.md" not in content
     assert "- current work dir" in content
     assert "- `datasets`" in content
     assert "- `diffusers`" in content
@@ -265,11 +273,10 @@ def test_skill_requires_fixed_boxed_mailbox_summary():
 
 def test_execution_contract_uses_env_summary_instead_of_run_logs():
     content = read_text(REFERENCES_DIR / "execution-contract.md")
-    assert "`env_summary.md`" in content
     assert "`logs/run.log`" not in content
     assert "`logs/verify.log`" not in content
     assert "Do not require intermediate `run.log` or `verify.log` files" in content
-    assert "the final mailbox summary and `env_summary.md`" in content
+    assert "the final mailbox summary." in content
 
 
 def test_skill_uses_minimal_system_baseline_commands():
@@ -285,6 +292,7 @@ def test_skill_points_final_output_to_fixed_mailbox_example():
     content = read_text(SKILL_MD)
     assert "a final boxed mailbox summary using the fixed example format from" in content
     assert "`references/execution-contract.md`" in content
+    assert "do not write `.md` or `.json` result files during" in content
 
 
 def test_manifest_matches_ascend_only_scope_and_permissions():
@@ -294,6 +302,7 @@ def test_manifest_matches_ascend_only_scope_and_permissions():
     assert manifest["composes"] == []
     assert "torch_npu" in manifest["tags"]
     assert "nvidia" not in manifest["tags"]
+    assert "outputs" not in manifest
     choices = manifest["inputs"][0]["choices"]
     assert choices == ["local"]
 

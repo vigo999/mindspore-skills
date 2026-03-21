@@ -600,6 +600,46 @@ Files changed:
      - Replaced the old summary-shape assertions with checks for the new boxed
        mailbox format, fixed field order, and aligned labels
 
+### 2026-03-21 - Console-only output and stricter training-script detection
+
+Trigger:
+- The skill was still requiring `runs/<run_id>/out/` artifacts even though the
+  desired behavior is console-only output.
+- Training-script detection was too loose because any `.py` file could be
+  treated as a training script.
+
+Files changed:
+
+1. `skills/setup-agent/SKILL.md`
+   - Description: Main execution prompt used by the model
+   - Change:
+     - Removed the remaining `runs/<run_id>/out/` output requirement
+     - Changed final output to console-only mailbox summary
+     - Replaced the generic `*.py` scan with candidate training entry-script
+       detection rules
+     - Split script discovery and checkpoint discovery into separate roots
+
+2. `skills/setup-agent/references/execution-contract.md`
+   - Description: Runtime UX and reporting contract
+   - Change:
+     - Replaced artifact-writing requirements with a console-only contract
+     - Removed `env_summary.md` and other result-file requirements
+     - Clarified that mid-run repairs should appear only in the final mailbox
+       summary
+
+3. `skills/setup-agent/skill.yaml`
+   - Description: Skill manifest
+   - Change:
+     - Removed the `outputs` block so the manifest no longer advertises
+       `runs/<run_id>/out/` artifacts
+
+4. `skills/setup-agent/tests/test_references.py`
+   - Description: Behavior-contract tests for the skill prompt and references
+   - Change:
+     - Replaced artifact-output assertions with console-only assertions
+     - Added checks for candidate training entry-script matching and the
+       removal of the old broad `*.py` rule
+
 ## Validation Performed
 
 The rework was validated with:
