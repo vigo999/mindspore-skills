@@ -181,6 +181,7 @@ NPU 使用私有张量格式以优化计算性能：
 | **Workspace 计算错误** | GetWorkspaceSize 返回错误大小 | 检查 workspace 分配逻辑 |
 | **dtype 不支持** | aclnn 算子不支持某种 dtype | 添加 dtype 转换或 fallback |
 | **CANN 版本不兼容** | 新 aclnn 接口在旧 CANN 上不存在 | 使用 DO_COMPATIBILITY 宏 |
+| **ACLNN / ACLOP 语义不一致** | CPU 语义明确、ACLOP 正常，但 ACLNN 在同场景报错或行为不同 | 对比 opapi/aclops 同名算子的 shape 推导、dim 处理、keepdim 处理与 fallback 路径 |
 
 ### 诊断步骤
 
@@ -188,6 +189,8 @@ NPU 使用私有张量格式以优化计算性能：
 2. 检查符号: `nm -D /usr/local/Ascend/ascend-toolkit/latest/lib64/libopapi.so | grep aclnnXxx`
 3. 检查头文件: 查看 CANN 头文件中 aclnn 函数的签名
 4. 检查 DO_COMPATIBILITY: 确认 fallback 路径是否正确
+5. 对比 CPU / ACLOP / ACLNN: 若 CPU 与 ACLOP 一致而 ACLNN 异常，优先判定为 ACLNN 语义不一致或底层缺陷
+6. 对 reduce / index 类算子重点检查: `dim=None`、`keepdim=True`、flatten 后的 output_size 推导是否仍保留上游语义
 
 ---
 
@@ -476,6 +479,7 @@ torch_npu 报错
 │  ├─ "ACL_ERROR_*" / "EZ9999" → ACLNN 执行错误
 │  │  ├─ 161002 + CheckAxisRange/CheckShapeValid → opapi 层 infershape 错误
 │  │  ├─ 0x800000 MTE 越界 → 检查 gen_opapi 的 out dtype 配置
+│  │  ├─ CPU 正常 + ACLOP 正常 + ACLNN 异常 → 优先判定 ACLNN / ACLOP 语义不一致
 │  │  ├─ 多框架共卡 → 用 ASCEND_RT_VISIBLE_DEVICES 隔离
 │  │  ├─ 参数错误 → 检查 dtype/shape/format 是否匹配
 │  │  ├─ 内部错误 → 可能是 CANN bug，尝试不同版本

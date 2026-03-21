@@ -85,7 +85,8 @@ torch_npu 源码在用户的工作目录下：
 ├─ "not implemented for 'PrivateUse1'" → 算子未注册，检查 TORCH_LIBRARY_IMPL
 ├─ "ACL_ERROR_*" / "EZ9999" → ACLNN 层错误，检查 opapi/ 实现
 │  ├─ 161002 + CheckAxisRange → opapi infershape 错误
-│  └─ 0x800000 MTE 越界 → 检查 gen_opapi out dtype
+│  ├─ 0x800000 MTE 越界 → 检查 gen_opapi out dtype
+│  └─ CPU 正常 + ACLOP 正常 + ACLNN 异常 → 优先判定 ACLNN 与 ACLOP 语义不一致
 ├─ ATB "setup failed" → 开启 ASDOPS_LOG_LEVEL=INFO 查看 dtype 组合
 ├─ "format mismatch" / "TransData" → Format 转换问题，检查 FormatHelper
 ├─ allclose 失败 / 精度偏差 → 精度问题，对比 CPU/GPU 结果
@@ -155,6 +156,27 @@ rg "{keyword}" torch_npu/csrc/core/npu/interface/
 - Format 转换路径（NCHW ↔ NZ/FRACTAL_Z）
 - dtype 转换和提升逻辑
 
+#### 3.4 语义对齐类问题的专项检查
+
+当问题表现为 **shape 正常性、keepdim 语义、dim 缺省语义、dtype 语义或边界输入行为** 与 PyTorch CPU/GPU 不一致时，必须补做以下对比：
+
+1. **先确认 PyTorch 语义**
+   - 直接在 CPU 上构造最小样例验证期望输出
+   - 必要时同时对比 GPU（若环境可用）
+2. **区分 ACLNN 与 ACLOP 路径**
+   - 分别检查 `opapi/` 与 `aclops/` 的同名算子实现
+   - 重点比较：输入 reshape、real dim、keepdim、output_size 推导、dtype 转换
+3. **建立三方对比结论**
+   - CPU 正常 + ACLOP 正常 + ACLNN 异常 → 优先判定为 ACLNN 实现缺陷或语义不一致
+   - CPU 正常 + ACLNN/ACLOP 都异常 → 优先判定为 torch_npu 适配层公共逻辑问题
+   - CPU/上游本身异常 → 不能直接归因 torch_npu
+4. **对 reduce 类算子额外检查**
+   - `dim=None` 时是否先扁平化执行
+   - 扁平化后是否错误沿用了扁平 tensor 的输出 shape 推导
+   - `keepdim=True` 时是否应保留原始 rank
+
+这类问题不要只盯报错本身；要重点核对“语义是否与 PyTorch 对齐”，以及“ACLNN 与 ACLOP 是否一致”。
+
 ### Step 4: 修复
 
 读取 `references/fix_patterns.md` 获取常见修复模板。
@@ -202,6 +224,49 @@ class TestXxxOp:
         # Edge case that triggered the bug
         ...
 ```
+
+### Step 7: 交付件归档
+
+问题定位完成后，除了代码修改和验证外，还应按需保存以下交付件，便于复盘、提单和后续接手：
+
+1. **定位总结（必选）**
+   - 使用中文书写
+   - 至少包含：问题现象、复现方式、定界结论、根因分析、修复/规避方案、验证结果、最终结论
+2. **代码 diff（推荐）**
+   - 保存本次改动的补丁或 diff 文件
+   - 便于远端同步、代码复查、后续 cherry-pick 或回溯
+3. **问题单材料（当发现底层缺陷时必选）**
+   - 若最终结论指向 ACLNN / CANN / 驱动等底层问题，应额外整理：
+     - 详细问题单模板
+     - 简版摘要（适合 GitCode / Jira）
+   - 内容应强调对比证据：CPU、ACLOP、ACLNN 三方行为是否一致
+   - **必须详细描述复现过程**，至少写清：
+     - 复现环境（Python / PyTorch / torch_npu / CANN / 设备型号）
+     - 复现命令或执行步骤
+     - 最小复现脚本
+     - 实际结果 / 报错
+     - 期望结果
+   - 如果当前版本已加 fallback 或 workaround，需额外说明：
+     - 用户态默认是否已经被规避
+     - 如需复现底层原始问题，是否需要临时关闭 fallback 或强制走 ACLNN 路径
+   - **建议按以下一级标题组织详细问题单**：
+     - 环境信息
+     - 复现步骤
+     - 最小复现脚本
+     - 实际结果
+     - 期望结果
+     - 对比结论
+     - torch_npu 当前规避方式
+4. **验证证据（推荐）**
+   - 保存关键命令输出、报错片段、shape 对比结果、wheel 安装路径或运行时加载路径
+   - 如果自动测试受环境阻塞，也要明确记录“阻塞点在环境，不在算子逻辑”
+
+交付件建议默认保存在用户提供的 issue 目录或同级调试目录下，并使用清晰命名，例如：
+
+- `定位总结.md`
+- `code_changes.diff`
+- `aclnn_xxx_issue_template.md`
+- `aclnn_xxx_issue_summary_short.md`
 
 ---
 
@@ -252,7 +317,7 @@ readelf -p .comment <bad-torch-npu-path>/_C.cpython-310-aarch64-linux-gnu.so
 
 若 Python / torch / good 包为 GCC 11.x，而 bad 包为 GCC 10.x，应优先判定为构建工具链不兼容。
 
-**优先考虑回到原容器内做 clean rebuild，再验证是否消除崩溃。
+**优先考虑回到原容器内做 clean rebuild，再验证是否消除崩溃。**
 
 ```bash
 # 错误：直接运行

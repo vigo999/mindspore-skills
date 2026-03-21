@@ -14,6 +14,7 @@
 7. [Python 绑定层](#7-python-绑定层)
 8. [构建系统](#8-构建系统)
 9. [源码搜索速查表](#9-源码搜索速查表)
+10. [Reduce 类算子排查入口](#10-reduce-类算子排查入口)
 
 ---
 
@@ -141,6 +142,32 @@ at::Tensor add(const at::Tensor& self, const at::Tensor& other, const at::Scalar
 }
 } // namespace acl_op
 ```
+
+### Reduce 类算子的特殊入口
+
+reduce / index reduction 类算子（如 `argmax`、`argmin`、`sum`、`mean`）除了普通算子入口外，还应额外关注以下位置：
+
+- `third_party/op-plugin/op_plugin/ops/opapi/*Reduce*`
+- `third_party/op-plugin/op_plugin/ops/opapi/ArgmaxKernelNpuOpApi.cpp`
+- `third_party/op-plugin/op_plugin/ops/opapi/ArgminKernelNpuOpApi.cpp`
+- `third_party/op-plugin/op_plugin/ops/aclops/ArgmaxKernelNpu.cpp`
+- `third_party/op-plugin/op_plugin/ops/aclops/ArgminKernelNpu.cpp`
+- `third_party/op-plugin/op_plugin/utils/KernelNpuOutputSize.h`
+
+这类算子经常不是“算不出来”，而是“语义对不上”，尤其是在以下场景：
+
+- `dim=None`
+- `keepdim=True`
+- 输入先被 `reshape({-1})` 扁平化
+- 输出 shape 由 `reduce_ops_npu_output_size(...)` 推导
+
+如果问题涉及 shape、rank-preserving keepdim、默认 dim 语义或 CPU/NPU 结果结构不一致，优先检查：
+
+1. `dim=None` 时是否被强制改写成扁平 tensor 上的 `dim=0`
+2. 执行可以扁平化，但输出 shape 推导是否错误沿用了扁平 tensor 的 rank
+3. `keepdim=True` 时是否应该按原始输入 rank 构造全 1 维输出
+4. opapi 与 aclops 两条路径是否都实现了相同语义
+5. `DO_COMPATIBILITY` 与显式 fallback 是否覆盖了 ACLNN 不兼容场景
 
 ## 4. 框架层 (torch_npu/csrc)
 
@@ -428,3 +455,55 @@ rg "npu_\w+" torch_npu/npu/__init__.py
 | dtype 错误 | `rg "scalar_type\|dtype\|to\(" ` 在算子实现中搜索 |
 | 反向传播 | `rg "backward\|grad_fn\|autograd"` |
 | Stream 同步 | `rg "NPUStream\|synchronize\|ASCEND_LAUNCH_BLOCKING"` |
+| reduce 语义问题 | `rg "reshape\(\{-1\}\)\|reduce_ops_npu_output_size\|keepdim\|!dim.has_value" third_party/op-plugin/` |
+
+## 10. Reduce 类算子排查入口
+
+当问题集中在 `argmax`、`argmin`、`sum`、`mean` 等 reduce 类算子的 shape、rank、keepdim 或默认 dim 语义时，建议按以下顺序排查。
+
+### 10.1 先找两条实现路径
+
+```bash
+rg -l "Argmax|ArgMin|Reduce" third_party/op-plugin/op_plugin/ops/opapi/
+rg -l "Argmax|ArgMin|Reduce" third_party/op-plugin/op_plugin/ops/aclops/
+```
+
+优先关注：
+
+- `third_party/op-plugin/op_plugin/ops/opapi/ArgmaxKernelNpuOpApi.cpp`
+- `third_party/op-plugin/op_plugin/ops/opapi/ArgminKernelNpuOpApi.cpp`
+- `third_party/op-plugin/op_plugin/ops/aclops/ArgmaxKernelNpu.cpp`
+- `third_party/op-plugin/op_plugin/ops/aclops/ArgminKernelNpu.cpp`
+- `third_party/op-plugin/op_plugin/utils/KernelNpuOutputSize.h`
+
+### 10.2 再看语义敏感点
+
+对 reduce 类算子，重点检查以下代码模式：
+
+- `self.reshape({-1})`
+- `int64_t real_dim = 0`
+- `bool real_keep_dim = false`
+- `op_infer::reduce_ops_npu_output_size(...)`
+- 自定义 `get_keepdim_output_size(...)`
+- `if (!dim.has_value() && keepdim) { ... fallback ... }`
+
+这些模式通常对应以下风险：
+
+- 执行路径为了实现全量归约而扁平化输入
+- 但输出 shape 仍错误按扁平 tensor 推导
+- `keepdim=True` 时丢失原始 rank
+- ACLNN 能执行，但无法 materialize 正确语义输出
+
+### 10.3 最后做三方对比归因
+
+定位这类问题时，不要只比较“有没有报错”，而要比较语义：
+
+- PyTorch CPU 是否正常
+- ACLOP 路径是否正常
+- ACLNN 路径是否正常
+
+推荐归因规则：
+
+- **CPU 正常 + ACLOP 正常 + ACLNN 异常** → 优先归因为 ACLNN 语义不一致或实现缺陷
+- **CPU 正常 + ACLNN/ACLOP 都异常** → 优先归因为 torch_npu 公共适配逻辑问题
+- **CPU 本身异常** → 不能直接归因 torch_npu
