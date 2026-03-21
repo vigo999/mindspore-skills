@@ -67,6 +67,12 @@ torch_npu 源码在用户的工作目录下：
 报错信息
 ├─ import 失败
 │  ├─ "undefined symbol" 含 cxx11 → GCC ABI 不匹配
+│  ├─ `import torch_npu` / `_c10d_npu_init` 直接 SIGSEGV
+│  │  ├─ 同环境旧包正常、重编包崩溃 → 优先比较二进制编译器版本
+│  │  ├─ `readelf -p .comment` 显示 torch/libpython/good 包为 GCC 11.x，bad 包为 GCC 10.x
+│  │  │  → Python / torch / torch_npu 工具链不兼容
+│  │  └─ 服务器存在 gcc-toolset-11 但宿主机默认 gcc 为 10.x
+│  │     → 可考虑使用专用的编译容器进行编译。
 │  ├─ "Unsupported soc version" → torch_npu 版本过旧
 │  ├─ 调用栈含 triton → 卸载 triton 或设 TORCH_DEVICE_BACKEND_AUTOLOAD=0
 │  └─ _lazy_init 卡死 → 驱动异常，lspci | grep ascend
@@ -74,7 +80,8 @@ torch_npu 源码在用户的工作目录下：
 │  ├─ "undefined reference to op_api::*" → op-plugin submodule 不对齐
 │  ├─ "is not a member of OpCommand" → op-plugin 比 torch_npu 新
 │  ├─ error code 500002 → GE 图编译失败，查 plog
-│  └─ "ld: cannot find" → GCC 版本不兼容
+│  ├─ "ld: cannot find -lstdc++fs" → GCC 版本/ABI 不兼容
+│  └─ "ld: cannot find -ltorch_npu" → 先检查链接路径、构建产物和安装结果
 ├─ "not implemented for 'PrivateUse1'" → 算子未注册，检查 TORCH_LIBRARY_IMPL
 ├─ "ACL_ERROR_*" / "EZ9999" → ACLNN 层错误，检查 opapi/ 实现
 │  ├─ 161002 + CheckAxisRange → opapi infershape 错误
@@ -219,8 +226,8 @@ ssh user@server "cd /home/lch/work/torch_npu && git apply --check fix.diff && gi
 ### 远程编译
 
 ```bash
-# 编译 torch_npu（必须先 source 环境）
-ssh user@server "cd /home/lch/work && source env_ms.sh mindspore/ && cd torch_npu && bash ci/build.sh --python=3.9"
+# 编译 torch_npu（必须先 source 环境，并与运行时 Python 版本保持一致）
+ssh user@server "cd /home/lch/work && source env_ms.sh mindspore/ && cd torch_npu && bash ci/build.sh --python=<python-version>"
 ```
 
 ### 远程运行测试
@@ -233,6 +240,19 @@ ssh user@server "cd /home/lch/work && source env_ms.sh mindspore/ && cd torch_np
 ### 关键注意事项
 
 **必须 source env_ms.sh**：每次 SSH 执行 Python/pytest 命令前，都必须先 `cd /home/lch/work && source env_ms.sh mindspore/`，否则环境变量未设置，`import torch_npu` 会失败或加载错误版本。
+
+**遇到 import 阶段 native crash 时优先排查工具链**：若 `import torch_npu`、`_c10d_npu_init` 或 pybind 绑定阶段直接 `SIGSEGV`，且同一 Python 环境下旧包正常、重编包崩溃，不要先改源码。优先比较 `libpython`、`torch/_C`、good/bad `torch_npu` 的 `.comment`。其中 `<good-torch-npu-path>` / `<bad-torch-npu-path>` 应替换为现场实际的好/坏包路径（例如本次问题中的 `torch_npu--` 与 `torch_npu`）：
+
+```bash
+readelf -p .comment /root/miniconda3/envs/lch_py310/lib/libpython3.10.so
+readelf -p .comment /root/miniconda3/envs/lch_py310/lib/python3.10/site-packages/torch/_C.cpython-310-aarch64-linux-gnu.so
+readelf -p .comment <good-torch-npu-path>/_C.cpython-310-aarch64-linux-gnu.so
+readelf -p .comment <bad-torch-npu-path>/_C.cpython-310-aarch64-linux-gnu.so
+```
+
+若 Python / torch / good 包为 GCC 11.x，而 bad 包为 GCC 10.x，应优先判定为构建工具链不兼容。
+
+**优先考虑回到原容器内做 clean rebuild，再验证是否消除崩溃。
 
 ```bash
 # 错误：直接运行

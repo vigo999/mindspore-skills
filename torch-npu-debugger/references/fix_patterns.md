@@ -365,20 +365,52 @@ git submodule update --init --recursive
 
 ### 7.2 GCC ABI 不匹配
 
-**问题**: `undefined symbol` 含 `cxx11`，torch 与 torch_npu 的 GCC ABI 版本不一致。
+**问题**: `undefined symbol` 含 `cxx11`，torch 与 torch_npu 的 GCC ABI 版本不一致。该场景通常是 **预编译 wheel / ABI 标记不匹配**，而不是“本地重编后 import 阶段直接 native crash”。
 
 **诊断**:
 
 ```python
-# Check torch's GCC version
+# Check torch's GCC version for ABI mismatch hints
 import torch
 print(torch.__config__.show())
-# Look for GCC version, compare with whl package name (manylinux suffix)
+# Combine this with wheel tag / manylinux information when diagnosing prebuilt package mismatch
 ```
 
-**修复**: 重新下载与 torch GCC 版本匹配的 torch_npu whl 包。
+**修复**: 重新下载与 torch GCC ABI 匹配的 torch_npu whl 包。若是本地重编后的 `import torch_npu` / `_c10d_npu_init` 直接 `SIGSEGV`，不要停留在 wheel ABI 检查，继续按 7.3 的 `.comment` 工具链诊断执行。
 
-### 7.3 C++ 标准修复
+### 7.3 Python / torch / torch_npu 工具链不兼容
+
+**问题**: `import torch_npu`、`_c10d_npu_init` 或 pybind 绑定阶段直接 `SIGSEGV`。同一 Python 环境下旧包正常、重编包崩溃，且 `libpython`、`torch/_C`、good 包和 bad 包的编译器版本不同。
+
+**诊断**:
+
+```bash
+# Compare Python, torch, and torch_npu compiler comments
+# Replace <good-torch-npu-path> / <bad-torch-npu-path> with the actual package roots.
+# In this incident they were torch_npu-- and torch_npu respectively.
+readelf -p .comment /root/miniconda3/envs/lch_py310/lib/libpython3.10.so
+readelf -p .comment /root/miniconda3/envs/lch_py310/lib/python3.10/site-packages/torch/_C.cpython-310-aarch64-linux-gnu.so
+readelf -p .comment <good-torch-npu-path>/_C.cpython-310-aarch64-linux-gnu.so
+readelf -p .comment <bad-torch-npu-path>/_C.cpython-310-aarch64-linux-gnu.so
+
+# Check Python build toolchain
+python - <<'PY'
+import platform, sysconfig
+print(platform.python_compiler())
+print(sysconfig.get_config_var('CC'))
+print(sysconfig.get_config_var('CXX'))
+print(sysconfig.get_config_var('LDSHARED'))
+PY
+```
+
+**判断模式**:
+- 如果 Python / `libpython` / `torch/_C` / good 包为 GCC 11.x，而 bad 包为 GCC 10.x，优先判定为构建工具链不兼容。
+- 如果宿主机默认 `gcc --version` 为 10.x，但 good 包 `.comment` 为 11.2.1，应继续检查容器内是否存在 `gcc-toolset-11` 或其他隐藏构建环境。
+- 如果 GCC 11 只存在于 Docker overlay 或容器文件系统，不要在宿主机直接调用这些编译器二进制；它们通常依赖容器内 glibc、libisl、libstdc++ 等运行库，脱离原上下文会引入新的动态库错误。
+
+**修复**: 回到与 good 包一致的 GCC 11.x 构建上下文（通常是容器内的 gcc-toolset-11）做 clean rebuild，再复现 import 行为验证是否消除崩溃。
+
+### 7.4 C++ 标准修复
 
 **问题**: `is_convertible_v was not declared`，C++ 标准被降级为 C++14。
 
@@ -393,6 +425,27 @@ set(CMAKE_CXX_STANDARD 17)
 # setup.py: change extra_compile_args
 extra_compile_args = ['-std=c++17']
 ```
+
+### 7.5 容器内 GCC 11 clean rebuild
+
+**问题**: 服务器宿主机默认 GCC 为 10.x，但好包由容器内 `gcc-toolset-11` 构建，宿主机直接重编会引入 import 阶段崩溃。
+
+**修复**: 在原容器构建上下文内执行 clean rebuild，不要从宿主机直接复用 overlay 编译器。
+
+```bash
+# Discover gcc-toolset-11 inside running container
+ssh user@server "docker exec <container> bash -lc 'which gcc g++ && gcc --version | head -1 && g++ --version | head -1'"
+
+# Build inside the same container/toolchain context
+ssh user@server "docker exec <container> bash -lc '
+  cd /home/lch/work && source env_ms.sh mindspore/ && cd torch_npu && \
+  rm -rf build dist && bash ci/build.sh --python=3.10
+'"
+```
+
+**注意**:
+- clean rebuild 前先确认容器中看到的 GCC 版本与 good 包 `.comment` 一致。
+- 如果只是从 `/home/_docker/overlay2/.../merged/.../g++` 直接在宿主机调用，常见失败是 `libisl.so` 缺失或 `glibc` 私有符号错误；这种失败不能证明源码有问题，只能说明工具链脱离了原运行时上下文。
 
 ---
 

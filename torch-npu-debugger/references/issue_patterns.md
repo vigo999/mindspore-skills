@@ -200,9 +200,10 @@ NPU 使用私有张量格式以优化计算性能：
 - `undefined reference to 'xxx'` / `undefined reference to op_api::*`
 - `error: no matching function for call to 'xxx'`
 - `'RunOpApiV2' is not a member of 'at_npu::native::OpCommand'`
-- `ld: cannot find -lstdc++fs` / `ld: cannot find -ltorch_npu`
+- `ld: cannot find -lstdc++fs`
+- `ld: cannot find -ltorch_npu`（更常见于链接路径或构建产物缺失）
 - `is_convertible_v was not declared in this scope`
-- 增量编译后链接失败
+- `import torch_npu` / `_c10d_npu_init` 阶段 `SIGSEGV`
 
 ### 常见根因
 
@@ -211,22 +212,27 @@ NPU 使用私有张量格式以优化计算性能：
 | **版本三元组不匹配** | CANN + torch_npu + op-plugin 三者版本必须严格匹配 | 检查版本配套表 |
 | **op-plugin submodule 不对齐** | op-plugin commit 与 torch_npu tag 不匹配，导致大量 `undefined reference to op_api::*` | 检查 `git submodule status` |
 | **OpCommand API 版本不匹配** | op-plugin 引用了 `OpCommand::RunOpApiV2` 等新方法，但 torch_npu 尚未实现 | 不能混用更新的 op-plugin |
-| **GCC 版本不兼容** | GCC 7.3 和 GCC 13.2 均不兼容，推荐 GCC 9.x | `conda install -c conda-forge gxx=9 gcc=9` |
+| **GCC 版本不兼容** | 宿主机重编出的 torch_npu 与当前 Python / torch 二进制工具链不一致，可能在 import 或 pybind 绑定阶段直接崩溃 | 比较 `libpython`、`torch/_C`、good/bad `torch_npu` 的 `.comment`，再检查宿主机与容器编译器来源 |
 | **C++ 标准降级** | CMakeLists.txt 中 `CMAKE_CXX_STANDARD` 被错误设为 14 | 检查 `is_convertible_v`、`if constexpr` 等 C++17 特性报错 |
 | **opp_kernel 包缺失** | CANN 环境缺少对应芯片的 opp_kernel 包 | 错误码 500002 = GE 图编译失败，查 plog 首报错 |
 | **头文件前向声明缺失** | `AclOpCompileInterface.h` 中 `executor` 未声明 | 添加 `struct aclopExecute;` 前向声明 |
 | **头文件依赖** | CANN 头文件路径变更或缺失 | 检查 CMakeLists.txt include 路径 |
 | **增量编译失败** | 缓存的 .o 文件与新代码不兼容 | 清理 build/ 目录后重新编译 |
+| **链接路径/产物缺失** | `-ltorch_npu` 等库找不到，通常是 build/install 结果或链接路径问题，而非 GCC 本身 | 检查 `build/`、`dist/`、库搜索路径和安装结果 |
 | **Python 版本不匹配** | 编译时和运行时 Python 版本不同 | 检查 `--python=3.9` 参数 |
 
 ### 版本配套决策树
 
 ```
-编译失败
+编译/导入失败
+├─ `import torch_npu` / `_c10d_npu_init` 直接 SIGSEGV
+│  ├─ 同环境旧包正常、重编包崩溃 → 比较 good/bad 包 `.comment`
+│  ├─ `libpython`、`torch/_C`、good 包为 GCC 11.x，bad 包为 GCC 10.x → 工具链不兼容
+│  └─ GCC 11 只存在于容器 / overlay → 回到原容器内 clean rebuild，不要直接复用 overlay 编译器
 ├─ "undefined reference to op_api::*" → op-plugin submodule commit 与 torch_npu tag 不对齐
 ├─ "is not a member of OpCommand" → op-plugin 比 torch_npu 新，降级 op-plugin 或升级 torch_npu
 ├─ "No such file or directory: aclnn*.h" → CANN 版本过旧，缺少新 ACLNN 头文件
-├─ "ld: cannot find -lstdc++fs" → GCC 版本不兼容（过旧或过新），推荐 GCC 9.x
+├─ "ld: cannot find -lstdc++fs" → GCC 版本不兼容，可先尝试与 torch / Python 相同的大版本工具链
 ├─ "is_convertible_v was not declared" → C++ 标准被降级为 C++14，需改回 C++17
 ├─ error code 500002 → GE 图编译失败，查 plog，检查 opp_kernel 包
 ├─ "Failed to load the backend extension: torch_npu" → 版本三元组不兼容，需完整 traceback
@@ -244,10 +250,12 @@ NPU 使用私有张量格式以优化计算性能：
 
 1. 检查版本三元组: CANN 版本、torch_npu 版本、op-plugin commit
 2. 检查子模块: `git submodule status`
-3. 检查 GCC: `gcc --version`，推荐 9.x
-4. 清理重编: `rm -rf build/ && bash ci/build.sh --python=3.9`
-5. 检查 CMake 日志: `build/CMakeFiles/CMakeError.log`
-6. 检查 plog: `$HOME/ascend/log/debug/plog/plog-pid_*.log`
+3. 检查 Python / torch / torch_npu 编译器来源: `platform.python_compiler()`、`readelf -p .comment`
+4. 检查宿主机与容器 GCC: `gcc --version`，确认是否存在与 good 包一致的 GCC 11.x 容器工具链
+5. 仅当 `ld: cannot find -lstdc++fs` 或明确依赖旧 ABI 时，再考虑固定推荐版本
+6. 清理重编: `rm -rf build/ && bash ci/build.sh --python=3.9`
+7. 检查 CMake 日志: `build/CMakeFiles/CMakeError.log`
+8. 检查 plog: `$HOME/ascend/log/debug/plog/plog-pid_*.log`
 
 ---
 
@@ -375,7 +383,7 @@ EZ9999 / error code = 0x800000
 
 | 根因 | 说明 | 定位方向 |
 |------|------|---------|
-| **GCC ABI 不匹配** | torch 与 torch_npu 的 GCC ABI 版本不一致 | `torch.__config__.show()` 查 GCC 版本，whl 包名看 `manylinux` 后缀 |
+| **GCC ABI 不匹配** | 典型表现为 `undefined symbol` 含 `cxx11`，多见于预编译 wheel 与 torch ABI 不匹配；若是本地重编后 import 阶段直接崩溃，应优先转到第 6 节的工具链诊断 | `torch.__config__.show()` 查 GCC 版本，结合 wheel / manylinux 信息判断 |
 | **SoC 版本未注册** | torch_npu 版本过旧，不支持该 SoC 型号 | 升级 torch_npu 版本 |
 | **triton 冲突** | triton 包与 torch_npu 冲突导致 import 失败 | 卸载 triton 或设 `TORCH_DEVICE_BACKEND_AUTOLOAD=0` |
 | **驱动未加载** | 驱动安装异常，`lspci` 无输出 | 重装驱动/固件/CANN |
@@ -439,14 +447,18 @@ torch_npu 报错
 │  ├─ "undefined symbol" 含 cxx11 → GCC ABI 不匹配，torch.__config__.show() 查版本
 │  ├─ "Unsupported soc version" → torch_npu 版本过旧，升级
 │  ├─ 调用栈含 triton → 卸载 triton 或设 TORCH_DEVICE_BACKEND_AUTOLOAD=0
-│  ├─ _lazy_init 卡死 / SIGSEGV → 驱动异常，lspci | grep ascend，gdb 采集堆栈
+│  ├─ `import torch_npu` / `_c10d_npu_init` 直接 SIGSEGV
+│  │  ├─ 同环境旧包正常、重编包崩溃 → 比较 good/bad 包 `.comment`
+│  │  ├─ `libpython`、`torch/_C`、good 包为 GCC 11.x，bad 包为 GCC 10.x → 工具链不兼容
+│  │  ├─ `_lazy_init` 卡死且未进入 pybind 绑定 → 再排查驱动异常，`lspci | grep ascend`，gdb 采集堆栈
+│  │  └─ GCC 11 只存在于容器 / overlay → 回到原容器内 clean rebuild，不要直接复用 overlay 编译器
 │  └─ "Failed to load the backend extension" → 版本三元组不兼容
 │
 ├─ 编译期错误
 │  ├─ "undefined reference to op_api::*" → op-plugin submodule 与 torch_npu tag 不对齐
 │  ├─ "is not a member of OpCommand" → op-plugin 比 torch_npu 新
 │  ├─ "No such file or directory: aclnn*.h" → CANN 版本过旧
-│  ├─ "ld: cannot find -lstdc++fs" → GCC 版本不兼容，推荐 9.x
+│  ├─ "ld: cannot find -lstdc++fs" → GCC 版本不兼容，可先尝试与 torch / Python 相同的大版本工具链
 │  ├─ "is_convertible_v was not declared" → C++ 标准被降级为 C++14
 │  ├─ error code 500002 → GE 图编译失败，查 plog，检查 opp_kernel 包
 │  └─ "executor was not declared" → 头文件前向声明缺失
