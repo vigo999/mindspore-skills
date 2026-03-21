@@ -87,6 +87,7 @@ torch_npu 源码在用户的工作目录下：
 ├─ "undefined symbol: aclnn*" → ACLNN 符号缺失，检查 CANN 版本
 ├─ EJ0001 HCCL 失败 → 检查残留进程，kill 后等 10 秒
 ├─ "stream sync" / SIGSEGV → 运行时问题，启用 ASCEND_LAUNCH_BLOCKING=1
+├─ KeyError on state_dict["state"][0] → optimizer state 为空（如 SGD momentum=0），添加非空守卫
 └─ 性能退化 → 检查 format 转换、task queue、MLIR fallback
 ```
 

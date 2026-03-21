@@ -12,6 +12,7 @@
 8. [自定义算子与 ATB 修复](#8-自定义算子与-atb-修复)
 9. [非连续 tensor 修复](#9-非连续-tensor-修复)
 10. [ACL API 边界保护](#10-acl-api-边界保护)
+11. [Optimizer 测试兼容性修复](#11-optimizer-测试兼容性修复)
 
 ---
 
@@ -485,3 +486,31 @@ for (size_t i = 0; i < moduleCount; i++) { ... }
 constexpr size_t MAX_MODULE_NUM = 1024;
 for (size_t i = 0; i < std::min(moduleCount, MAX_MODULE_NUM); i++) { ... }
 ```
+
+---
+
+## 11. Optimizer 测试兼容性修复
+
+### 11.1 state_dict 空 state 守卫
+
+**问题**: 测试代码直接用 `state_dict["state"][0]` 访问 optimizer state，但某些 optimizer 配置下（如 SGD `momentum=0`）state 为空字典，导致 `KeyError`。上游 PyTorch 测试用 `.values()` 迭代天然兼容空字典，torch_npu 的测试移植时未做防护。
+
+**根因**: PyTorch SGD 在 `momentum=0`（默认值）时不写入 `self.state`，`state_dict()["state"]` 返回 `{}`。
+
+**修复**: 在访问 `state_dict["state"][0]` 前添加非空检查。
+
+```python
+# Before: crashes when state is empty
+if "step" in state_dict["state"][0] and torch.is_tensor(
+    state_dict["state"][0]["step"]
+):
+
+# After: guard against empty state
+if state_dict["state"] and "step" in state_dict["state"][0] and torch.is_tensor(
+    state_dict["state"][0]["step"]
+):
+```
+
+**适用场景**: `test/optim/test_optim.py` 中 `_test_state_dict` 方法，以及任何直接按 key 访问 optimizer state 的测试代码。
+
+**排查要点**: 当 optimizer 测试出现 `KeyError` 且 key 为整数时，优先检查 optimizer 是否在当前配置下会产生空 state（如无 momentum 的 SGD、无 state 的自定义 optimizer）。

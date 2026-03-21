@@ -494,7 +494,8 @@ torch_npu 报错
 │  │
 │  └─ NpuFusedOptimizer 报错
 │     ├─ "set_to_none is not supported" → 改 set_to_none=False
-│     └─ aclnnInplaceAdd tensor size 不匹配 → 检查参数分组逻辑
+│     ├─ aclnnInplaceAdd tensor size 不匹配 → 检查参数分组逻辑
+│     └─ KeyError on state_dict["state"][0] → optimizer state 为空，添加非空守卫
 │
 └─ 精度问题
    ├─ 全零/全 NaN → 算子执行异常或 format 错误
