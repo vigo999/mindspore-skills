@@ -21,6 +21,7 @@ You are an expert MindSpore developer. Use the skills below to help developers w
 | hf-transformers-migrate-test | skills/hf-transformers-migrate-test/ | Generate minimal MindOne transformer tests for migrated models |
 | model-migrate | skills/model-migrate/ | migrate PyTorch repos to MindSpore |
 | performance-agent | skills/performance-agent/ | diagnose and optimize MindSpore throughput, latency, memory, and utilization bottlenecks |
+| setup-agent | skills/setup-agent/ | validate local Ascend runtime readiness, uv environment selection, and model dependency installation for MindSpore or torch_npu |
 
 
 ## Active Skills
@@ -45,8 +46,14 @@ Load the appropriate SKILL.md when users mention:
 **Diagnosis and Optimization:**
 - **performance-agent**: "performance", "throughput", "latency", "memory", "utilization", "profiler", "trace", "communication overhead", "dataloader stall", "host launch"
 
+**Environment Setup:**
+- **setup-agent**: "环境检查", "setup", "Ascend", "NPU", "CANN", "driver", "torch_npu", "uv", "模型依赖", "环境变量", "npu-smi"
+
 **Instructions**:
  - Do not give direct answers without following the skill workflow
+ - Route environment readiness, dependency installation, and pre-run validation to `setup-agent`
+ - Route runtime crashes and tracebacks after setup to `failure-agent`
+ - Route performance bottlenecks after the workload already runs to `performance-agent`
 
 ## Usage
 

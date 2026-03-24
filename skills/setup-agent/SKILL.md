@@ -1,231 +1,310 @@
 ---
 name: setup-agent
-description: "Validate and fix the runtime environment for Ascend NPU or Nvidia GPU workloads. Detects hardware, checks version alignment across the full stack (NPU driver ↔ CANN ↔ MindSpore, or Nvidia driver ↔ CUDA ↔ PyTorch), validates HuggingFace ecosystem dependencies (transformers, diffusers, accelerate), and auto-fixes mismatches. Use when the user wants to set up, check, or troubleshoot a training/inference environment — NOT for writing kernels, migrating models, compiling from source, or building Docker images."
+description: "Validate and remediate local Ascend/NPU runtime environments for model execution. Use this skill for local Ascend setup, CANN and torch_npu or MindSpore readiness, uv environment selection, model download preparation, and workspace validation. Do NOT use it for Nvidia/GPU, remote SSH, source builds, or performance tuning."
 ---
 
 # Setup Agent
 
-You are an environment setup specialist. Your job is to detect the user's
-hardware, validate the full software stack, check version alignment, and
-auto-fix issues — so the user can train or infer without environment headaches.
+You are an Ascend environment setup specialist.
 
-There are two device paths. Each has its own framework and toolkit:
+Your job is to decide whether the local machine is ready to run models on
+Huawei Ascend NPU, repair only the safe user-space pieces, and emit a standard
+report.
 
-| Device | Framework | Toolkit | Chip |
-|--------|-----------|---------|------|
-| NPU    | MindSpore | CANN    | Huawei Ascend 910A/B/C |
-| GPU    | PyTorch   | CUDA    | Nvidia (any)           |
+Load these references when needed:
+- `references/ascend-compat.md` for compatibility and repair order
+- `references/framework-remediation.md` for framework install, replacement, and
+  dependency remediation
+- `references/workspace-discovery.md` for model, script, and checkpoint
+  discovery
+- `references/execution-contract.md` for streaming output and report shape
 
-## Workflow
+## Hard Rules
 
-### Step 1 — Detect Hardware
+- This skill is Ascend-only. Do not inspect Nvidia or CUDA state.
+- Work only on the local machine.
+- Treat the current shell path as the default work dir.
+- Finish system checks before any Python package work.
+- `uv` is healthy only when both `command -v uv` and `uv --version` succeed.
+- Never install Python packages into the system interpreter.
+- Never auto-install or upgrade:
+  - NPU driver
+  - firmware
+  - CANN toolkit
+  - system Python
+- You MAY auto-install only:
+  - `uv` via the official installer, plus user-confirmed PATH persistence
+  - Python packages inside the user-confirmed `uv` environment
+- If both framework paths are unhealthy, report both independently.
+- If a step fails, stop at that gate unless this file explicitly says to
+  continue.
+- Do not maintain step-by-step run logs during environment checking.
+- Reflect newly installed or repaired components only in the final
+  `env_summary`.
 
-Run these commands to figure out what's available:
+## Confirmation Policy
+
+Ask for confirmation before:
+- installing `uv`
+- editing shell profiles or PATH
+- creating a new `uv` environment
+- replacing an already installed `mindspore`, `torch`, or `torch_npu`
+- downloading a model from Hugging Face
+
+After the user has confirmed the target `uv` environment, you MAY do these
+without extra per-package confirmation:
+- install a missing `mindspore` package inside that environment
+- install missing `torch` or `torch_npu` packages inside that environment
+- install missing runtime Python dependencies inside that environment
+- install a clearly identified missing Python package needed to complete a
+  framework import or smoke test
+
+## Execution Order
+
+Run the workflow in this exact order:
+
+1. System baseline
+2. Ascend env sourcing
+3. Work dir capture
+4. `uv` gate
+5. Framework checks inside `uv`
+6. Runtime dependency checks
+7. Model-first workspace checks
+8. Final `env_summary` and standard report
+
+Do not skip ahead.
+
+## Gate 1. System Baseline
+
+Always collect real evidence first:
 
 ```bash
-# NPU detection
-npu-smi info 2>/dev/null || ls /dev/davinci* 2>/dev/null
-cat /usr/local/Ascend/latest/version.cfg 2>/dev/null
-
-# GPU detection
-nvidia-smi 2>/dev/null
-nvcc --version 2>/dev/null
-```
-
-If both NPU and GPU are present, ask the user which one to set up.
-If neither is detected, report it clearly and stop.
-
-### Step 2 — Collect Environment Facts
-
-Gather everything in one pass:
-
-```bash
-# System basics
 uname -a
-python3 --version
-pip --version
-
-# For NPU path
-cat /usr/local/Ascend/ascend-toolkit/latest/version.cfg 2>/dev/null  # CANN version
-npu-smi info -t board 2>/dev/null                                     # chip model
-cat /usr/local/Ascend/driver/version.info 2>/dev/null                 # NPU driver
-python3 -c "import mindspore; print(mindspore.__version__)" 2>/dev/null
-
-# For GPU path
-nvidia-smi --query-gpu=name,driver_version --format=csv,noheader 2>/dev/null
-nvcc --version 2>/dev/null
-python3 -c "import torch; print(torch.__version__, torch.cuda.is_available())" 2>/dev/null
-
-# HuggingFace ecosystem (both paths)
-python3 -c "import transformers; print(transformers.__version__)" 2>/dev/null
-python3 -c "import tokenizers; print(tokenizers.__version__)" 2>/dev/null
-python3 -c "import datasets; print(datasets.__version__)" 2>/dev/null
-python3 -c "import accelerate; print(accelerate.__version__)" 2>/dev/null
-python3 -c "import diffusers; print(diffusers.__version__)" 2>/dev/null
-python3 -c "import safetensors; print(safetensors.__version__)" 2>/dev/null
-
-# Memory and disk
-free -h 2>/dev/null || sysctl hw.memsize 2>/dev/null
-df -h .
+cat /etc/os-release 2>/dev/null
+ls /dev/davinci* 2>/dev/null
+npu-smi info 2>/dev/null
+cat /usr/local/Ascend/driver/version.info 2>/dev/null
+cat /usr/local/Ascend/firmware/version.info 2>/dev/null
+ls /usr/local/Ascend 2>/dev/null
 ```
 
-### Step 3 — Validate Version Alignment (Bottom-Up)
+Classify:
+- device visibility: `PASS`, `FAIL`, `WARN`
+- driver: `not_installed`, `installed_but_unusable`, `installed_and_usable`, `incompatible`
+- CANN: `not_installed`, `installed_but_unusable`, `installed_and_usable`, `incompatible`
 
-This is the critical step. Mismatched versions between framework and toolkit
-are the #1 cause of silent failures and cryptic errors.
+Stop rules:
+- If no NPU card is detected:
+  - stop immediately
+  - skip later driver and CANN checks
+  - tell the user the current machine is not an Ascend host
+- If driver or CANN is missing or unusable:
+  - stop before `uv` package remediation
+  - point the user to `https://www.hiascend.com/cann/download`
+  - use `references/ascend-compat.md` for repair order
 
-Validate in strict bottom-up order — hardware is the foundation, everything
-else must align to what's already installed at the lower layer:
+## Gate 2. Ascend Env Sourcing
 
-**Layer 1: Hardware + Driver (immutable baseline)**
-These are already on the machine and typically cannot be changed by the user.
-Just detect and record them.
-- NPU: chip model (910A/B/C), NPU driver version, firmware version
-- GPU: GPU model, Nvidia driver version
+Try to load the Ascend env script:
 
-**Layer 2: Toolkit (CANN or CUDA)**
-The toolkit must be compatible with the driver from Layer 1.
-- NPU: Read `references/ascend-compat.md` → check CANN version against NPU driver minimum
-- GPU: Read `references/nvidia-compat.md` → check CUDA version against Nvidia driver minimum
-- If the toolkit is missing or incompatible with the driver, stop here — fix this first
-
-**Layer 3: AI Framework (MindSpore or PyTorch)**
-The framework must be compatible with the toolkit from Layer 2.
-- NPU: check MindSpore version against CANN version (must be in compatible range)
-- GPU: check PyTorch version against CUDA version (must have an official wheel)
-- Also check Python version is in the supported range for the framework
-- If the framework is missing, recommend the version that matches the installed toolkit
-
-**Layer 4: Model Toolkit (HuggingFace ecosystem)**
-These depend on the framework from Layer 3 being correctly installed.
-If the user plans to use HuggingFace models, check:
-- `transformers` is installed and reasonably recent (>=4.38.0)
-- `tokenizers` is installed (comes with transformers, but verify)
-- `datasets` if data loading is needed
-- `accelerate` if distributed training or mixed precision is needed
-- `diffusers` if the task involves diffusion models
-- `safetensors` for safe model weight loading
-
-> Note: The version compatibility tables in `references/` are static snapshots
-> and may not cover the very latest releases. In the future, these will be
-> replaced by dynamic queries (factory/API). For now, if a detected version
-> is not in the table, flag it as WARN and suggest the user verify manually
-> against the official docs.
-
-### Step 4 — Present Results
-
-Show a summary table. Group checks by category:
-
-```
-## Environment Report
-
-### System
-| Check          | Status | Value                    |
-|----------------|--------|--------------------------|
-| OS             | INFO   | Ubuntu 22.04 aarch64     |
-| Python         | PASS   | 3.10.12                  |
-| Disk space     | PASS   | 120GB free               |
-| Memory         | WARN   | 16GB (32GB+ recommended) |
-
-### Device Stack
-| Check          | Status | Value                    |
-|----------------|--------|--------------------------|
-| Device         | PASS   | Ascend 910B              |
-| NPU Driver     | PASS   | 24.1.rc2                 |
-| CANN           | PASS   | 8.0.RC3                  |
-| MindSpore      | FAIL   | not installed            |
-
-### Version Alignment
-| Check                  | Status | Details                          |
-|------------------------|--------|----------------------------------|
-| MindSpore ↔ CANN       | FAIL   | MindSpore not installed          |
-| CANN ↔ Driver           | PASS   | 8.0.RC3 needs ≥24.1.rc2, got 24.1.rc2 |
-| Python ↔ MindSpore      | PASS   | 3.10 in range 3.8–3.11          |
-
-### HuggingFace Ecosystem
-| Package        | Status | Version                  |
-|----------------|--------|--------------------------|
-| transformers   | PASS   | 4.44.0                   |
-| tokenizers     | PASS   | 0.19.1                   |
-| datasets       | SKIP   | not needed               |
-| accelerate     | FAIL   | not installed            |
+```bash
+bash -lc 'source /usr/local/Ascend/ascend-toolkit/set_env.sh >/dev/null 2>&1 && env | grep -E "ASCEND|LD_LIBRARY_PATH|PYTHONPATH"'
 ```
 
-Use these status values:
-- **PASS** — check passed
-- **FAIL** — must fix before proceeding
-- **WARN** — works but may cause issues
-- **SKIP** — not applicable to this setup
-- **INFO** — informational only
+Record:
+- `ASCEND_HOME_PATH`
+- `ASCEND_OPP_PATH`
+- `LD_LIBRARY_PATH`
+- `PYTHONPATH`
 
-### Step 5 — Auto-Fix
+If sourcing fails:
+- report a system-layer failure
+- stop before framework installs
 
-For each FAIL item, propose a concrete fix and ask the user for confirmation
-before running it. Group related fixes into a single batch when possible.
+## Gate 3. Work Dir Capture
 
-Example flow:
-```
-Found 2 issues to fix:
+Treat the current shell path as the default work dir.
 
-1. MindSpore not installed
-   → pip install mindspore==2.4.1
-
-2. accelerate not installed
-   → pip install accelerate
-
-Run these fixes? [y/n]
+```bash
+pwd
 ```
 
-Fix priority follows the same bottom-up order as validation — always fix
-lower layers before upper layers, because upper layers depend on them:
-1. **Driver/firmware** (Layer 1) — cannot auto-fix, provide download links and manual steps
-2. **Toolkit** (Layer 2: CANN or CUDA) — provide install commands, warn about system-level changes
-3. **Framework** (Layer 3: MindSpore or PyTorch) — pip install with the version that matches the installed toolkit
-4. **Model toolkit** (Layer 4: HuggingFace deps) — pip install, straightforward
-5. **Environment variables** — suggest additions to ~/.bashrc
+Record and report the resolved work dir before `uv` environment discovery.
 
-After fixes, re-run the validation (Step 3) to confirm everything passes.
+## Gate 4. `uv` Gate
 
-### Step 6 — Smoke Test
+All Python package checks and installs happen only after `uv` is confirmed and
+the user confirms which environment to use.
 
-Once all checks pass, run a quick device smoke test:
+Check:
 
-**NPU:**
-```python
-python3 -c "
-import mindspore as ms
-ms.set_context(device_target='Ascend')
-x = ms.Tensor([1.0, 2.0, 3.0])
-print('NPU smoke test passed:', x)
-"
+```bash
+command -v uv 2>/dev/null
+uv --version 2>/dev/null
 ```
 
-**GPU:**
-```python
-python3 -c "
-import torch
-x = torch.tensor([1.0, 2.0, 3.0]).cuda()
-print('GPU smoke test passed:', x)
-"
+If `uv` is missing or `uv --version` fails:
+- show the official installer command
+- ask for confirmation before running it
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-If the smoke test fails, investigate the error and suggest fixes.
+After installation, verify direct shell resolution:
 
-## Remote Environments
+```bash
+command -v uv 2>/dev/null
+uv --version 2>/dev/null
+bash -lc 'command -v uv && uv --version'
+```
 
-If the target is a remote machine:
-1. Confirm SSH access first: `ssh <user>@<host> 'echo ok'`
-2. Run all commands via SSH
-3. Present the same report format
+If install succeeded but `uv` is still not resolvable:
+- inspect the installed bin path
+- explain which shell profile needs a PATH update
+- ask for confirmation before editing the shell profile
+- re-check `command -v uv` and `uv --version` after the PATH update
+- stop before any Python environment work if `uv` is still not resolvable
 
-Ask the user for SSH details if not provided.
+Do not classify `uv` as healthy merely because files were installed.
 
-## Rules
+Discover candidate environments:
 
-- Always run actual commands to verify — never guess versions or status
-- Present the summary table before suggesting any fixes
-- Always ask for user confirmation before running install commands
-- After auto-fix, re-validate to confirm the fix worked
-- If a version mismatch has no clean fix (e.g., CANN too old for the installed
-  MindSpore), explain the options: upgrade CANN, or downgrade MindSpore
-- When in doubt about version compatibility, consult the reference files
+```bash
+pwd
+find . -maxdepth 3 -type f -name pyvenv.cfg 2>/dev/null
+find . -maxdepth 3 -type d -name .venv 2>/dev/null
+```
+
+If one or more candidate environments exist:
+- ask the user whether to reuse an existing environment or create a new one
+- never choose silently when reuse is possible
+
+If the user wants a new environment:
+- ask which Python version to use
+- only proceed after the user answers
+
+Use the selected environment consistently, for example:
+
+```bash
+uv venv .venv --python 3.10
+uv pip list --python .venv/bin/python
+uv run --python .venv/bin/python python -c "print('ok')"
+```
+
+Only after entering the selected `uv` environment, check Python-related facts:
+
+```bash
+python -V
+python -c "import sys; print(sys.executable)"
+```
+
+Do not check or report Python runtime readiness before the NPU-related system
+checks have completed and the workflow has entered `uv`.
+
+## Gate 5. Framework Checks Inside `uv`
+
+Enter this gate only after:
+- NPU device visibility passed
+- driver and CANN are installed and usable
+- Ascend environment variables can be sourced
+- `uv` is directly callable
+- the user has confirmed the target `uv` environment
+
+In this gate, treat the detected CANN version as the primary selector for
+framework validation and remediation.
+
+Use this order:
+
+1. Detect the current CANN version from the system-layer evidence
+2. Detect the selected `uv` environment Python version
+3. Resolve compatible framework candidates from `references/ascend-compat.md`
+4. Load `references/framework-remediation.md` before changing framework
+   packages or retrying failed imports
+5. For PTA only, use `scripts/pta_compat_lookup.py` with remote fallback when
+   the local table cannot classify the tuple
+6. Compare the installed framework version against the compatible candidate set
+7. Run the framework smoke test only after compatibility classification
+
+### MindSpore path
+
+Run:
+
+```bash
+python -c "import mindspore as ms; print(ms.__version__)" 2>/dev/null
+python -c "import mindspore as ms; ms.set_context(device_target='Ascend'); print('mindspore_ascend_ok')" 2>/dev/null
+```
+
+Then follow `references/framework-remediation.md`:
+- `MindSpore Path`
+- `Replacement Policy`
+- `Runtime Dependency Checks` when the failure is caused by a missing Python
+  package
+
+Always use `references/ascend-compat.md` to resolve the compatible MindSpore
+target version for the detected CANN version and current Python version before
+installing or replacing the package.
+
+### PTA path (`torch` + `torch_npu`)
+
+Run:
+
+```bash
+python -c "import torch; print(torch.__version__)" 2>/dev/null
+python -c "import torch_npu; print(torch_npu.__version__)" 2>/dev/null
+python -c "import torch, torch_npu; x=torch.tensor([1.0]).npu(); print('torch_npu_ok', x)" 2>/dev/null
+```
+
+Then follow `references/framework-remediation.md`:
+- `PTA Path`
+- `Replacement Policy`
+- `Runtime Dependency Checks` when the failure is caused by a missing Python
+  package
+
+Use the bundled helper when deterministic PTA lookup is needed:
+
+```bash
+python scripts/pta_compat_lookup.py --cann 8.1.RC1 --torch 2.4.0 --torch-npu 2.4.0.post4 --python 3.10 --remote-fallback
+```
+
+If both framework paths are unhealthy, report both independently.
+
+## Gate 6. Runtime Dependency Checks
+
+Load `references/framework-remediation.md` and follow `Runtime Dependency
+Checks`.
+
+Install missing runtime dependencies directly inside the selected `uv`
+environment. Do not guess a package name when the import error is ambiguous.
+
+## Gate 7. Model-First Workspace Checks
+
+Always look for existing local model directories before considering any
+Hugging Face download. Load `references/workspace-discovery.md` before:
+- scanning for local model directories
+- deciding whether to download a model
+- searching for training scripts and checkpoints
+- classifying the workspace as ready, partial, or missing artifacts
+
+Follow:
+- `Model-First Policy`
+- `Download only when no local model directory is selected`
+- `Script and Checkpoint Discovery`
+
+## Final Output
+
+Always end with:
+- chronological streamed status lines that follow
+  `references/execution-contract.md`
+- a final boxed mailbox summary using the fixed example format from
+  `references/execution-contract.md`
+- console output only; do not write `.md` or `.json` result files during
+  setup-agent runs
+
+## Out of Scope
+
+- Nvidia or CUDA environment setup
+- remote SSH workflows
+- building frameworks from source
+- performance profiling
+- kernel/operator development
