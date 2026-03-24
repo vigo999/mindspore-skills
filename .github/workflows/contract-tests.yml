@@ -31,4 +31,4 @@ jobs:
       - name: Run cross-skill contract tests
         run: python -m pytest -q tests/contract
       - name: Run skill-specific tests
-        run: python -m pytest -q skills/cpu-plugin-builder/tests skills/npu-builder/tests skills/mindspore-aclnn-operator-devflow/tests
+        run: python -m pytest -q skills/cpu-plugin-builder/tests skills/op-agent/tests
