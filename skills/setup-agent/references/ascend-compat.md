@@ -32,11 +32,22 @@ recommended.
 
 ### MindSpore source policy
 
-- local table only
-- do not fetch remote compatibility data for MindSpore during a normal
-  `setup-agent` run
-- if the local MindSpore table cannot classify the tuple, mark it `WARN` and
-  do not auto-remediate
+Lookup order:
+
+1. local MindSpore compatibility table
+2. official `https://www.mindspore.cn/versions` page for the detected release
+3. if the official page still leaves CANN or Python support unresolved, mark
+   the MindSpore path `WARN` and stop MindSpore auto-remediation
+
+Remote lookup rules:
+- keep the local table as the primary source of truth
+- use the official `versions` page only when the local MindSpore table cannot
+  classify the tuple
+- use the official lookup result as a user-confirmed reference, not as silent
+  auto-remediation input
+- if the official page confirms the CANN pairing but does not clearly confirm
+  the Python support range, keep the MindSpore path `WARN`
+- do not mutate this local reference file during a normal `setup-agent` run
 
 ### PTA source policy
 
@@ -105,32 +116,48 @@ Stop conditions:
 
 Use this section only after the system layer is healthy.
 
-| MindSpore | Recommended CANN | Minimum CANN | Python | Recommended Replacement | Typical Use |
-|-----------|------------------|--------------|--------|-------------------------|-------------|
-| 2.5.0 | 8.1.RC1 | 8.0.RC3 | 3.8-3.11 | 2.5.0 on CANN 8.1.RC1, or 2.4.1 on CANN 8.0.RC3 | Current recommended stable line |
-| 2.4.1 | 8.0.RC3 | 8.0.RC2 | 3.8-3.11 | 2.4.1 on CANN 8.0.RC3, or 2.4.0 on CANN 8.0.RC2 | Common production baseline |
-| 2.4.0 | 8.0.RC2 | 8.0.RC1 | 3.8-3.11 | 2.4.0 on CANN 8.0.RC2, or 2.3.1 on CANN 8.0.RC1 | Transitional release |
-| 2.3.1 | 8.0.RC1 | 7.3.0 | 3.8-3.10 | 2.3.1 on CANN 8.0.RC1, or 2.3.0 on CANN 7.3.0 | Legacy support |
-| 2.3.0 | 7.3.0 | 7.1.0 | 3.8-3.10 | 2.3.0 on CANN 7.3.0 | Legacy support |
+| CANN | MindSpore | Python | Typical Use |
+|------|-----------|--------|-------------|
+| 8.5.0 | 2.8.0 | 3.9-3.12 | Latest published MindSpore row from the official `versions` page |
+| 8.5.0 | 2.7.2 | 3.9-3.12 | Stable 8.5.0 line from the official `versions` page |
+| 8.3.RC1 | 2.8.0 | 3.9-3.12 | Current RC line from the official `versions` page |
+| 8.3.RC1 | 2.7.1 | 3.9-3.11 | Current RC line from the official `versions` page |
+| 8.2.RC1 | 2.7.0 | 3.9-3.11 | Current RC line from the official `versions` page |
+| 8.2.RC1 | 2.7.0-rc1 | 3.9-3.11 | Current RC line from the official `versions` page |
 
 Validation checklist:
 - import succeeds inside the selected `uv` environment
 - Python version is within the supported range
-- CANN version satisfies at least the minimum
+- detected CANN version matches an exact local MindSpore row
 - `ms.set_context(device_target='Ascend')` succeeds after sourcing Ascend env
 - if the installed MindSpore version is incompatible but a compatible local
   replacement can be derived, recommend replacement inside the selected `uv`
   environment after user confirmation
+- if the local table cannot classify the tuple, check the official
+  `https://www.mindspore.cn/versions` page for the detected release before
+  deciding whether the tuple is unknown
+- if the official page does not clearly publish Python support for that row,
+  keep the MindSpore path `WARN` and ask the user to confirm before any
+  package install or replacement
 
 Decision rule:
-- exact or clearly in-range tuple: `PASS`
-- version present but below minimum CANN or Python range: `FAIL`
+- exact local tuple match and compatible Python range: `PASS`
+- version present in the local table but under a different CANN row, or Python
+  version outside the listed range: `FAIL`
+- local row or official lookup that still requires manual Python confirmation:
+  `WARN`
 - version not listed: `WARN`
 - installed version incompatible but replacement available locally: `FAIL`
   until the user confirms replacement and the replacement smoke test passes
 
 Official verification:
 - https://www.mindspore.cn/install
+- https://www.mindspore.cn/versions#2.8.0
+- https://www.mindspore.cn/versions#2.7.2
+- https://www.mindspore.cn/versions#2.7.1
+- https://www.mindspore.cn/versions#2.7.0
+- https://www.mindspore.cn/versions#2.7.0-rc1
+- https://www.mindspore.cn/docs/zh-CN/r2.7.2/faq/installation.html
 
 ## PyTorch + torch_npu on Ascend
 
@@ -146,7 +173,7 @@ Use exact CANN-keyed rows first. Normalize package versions before lookup:
 
 | CANN | torch | torch_npu | Python | Github Branch | Typical Use |
 |------|-------|-----------|--------|---------------|-------------|
-| 8.5.0 | 2.9.0 | 2.9.0 | verify upstream PTA Python table before install | v2.9.0-7.3.0 | Latest published PTA line in the upstream compatibility table |
+| 8.5.0 | 2.9.0 | 2.9.0 | 3.9-3.11 | v2.9.0-7.3.0 | Latest published PTA line in the upstream compatibility table |
 | 8.5.0 | 2.8.0 | 2.8.0.post2 | 3.9-3.11 | v2.8.0-7.3.0 | Newer Ascend stacks |
 | 8.5.0 | 2.7.1 | 2.7.1.post2 | 3.9-3.11 | v2.7.1-7.3.0 | Newer Ascend stacks |
 | 8.5.0 | 2.6.0 | 2.6.0.post5 | 3.9-3.11 | v2.6.0-7.3.0 | Newer Ascend stacks |
@@ -161,18 +188,6 @@ Use exact CANN-keyed rows first. Normalize package versions before lookup:
 | 8.1.RC1 | 2.4.0 | 2.4.0.post4 | 3.8-3.11 | v2.4.0-7.0.0 | Common production baseline |
 | 8.1.RC1 | 2.3.1 | 2.3.1.post6 | 3.8-3.11 | v2.3.1-7.0.0 | Common production baseline |
 | 8.1.RC1 | 2.1.0 | 2.1.0.post12 | 3.8-3.11 | v2.1.0-7.0.0 | Older but still common |
-| 8.0.0 | 2.4.0 | 2.4.0.post2 | 3.8-3.11 | v2.4.0-6.0.0 | Stable 8.0 line |
-| 8.0.0 | 2.3.1 | 2.3.1.post4 | 3.8-3.11 | v2.3.1-6.0.0 | Stable 8.0 line |
-| 8.0.0 | 2.1.0 | 2.1.0.post10 | 3.8-3.11 | v2.1.0-6.0.0 | Stable 8.0 line |
-| 8.0.RC3 | 2.4.0 | 2.4.0 | 3.8-3.11 | v2.4.0-6.0.rc3 | RC baseline |
-| 8.0.RC3 | 2.3.1 | 2.3.1.post2 | 3.8-3.11 | v2.3.1-6.0.rc3 | RC baseline |
-| 8.0.RC3 | 2.1.0 | 2.1.0.post8 | 3.8-3.11 | v2.1.0-6.0.rc3 | RC baseline |
-| 8.0.RC2 | 2.3.1 | 2.3.1 | 3.8-3.11 | v2.3.1-6.0.rc2 | Transitional RC line |
-| 8.0.RC2 | 2.2.0 | 2.2.0.post2 | 3.8-3.10 | v2.2.0-6.0.rc2 | Transitional RC line |
-| 8.0.RC2 | 2.1.0 | 2.1.0.post6 | 3.8-3.11 | v2.1.0-6.0.rc2 | Transitional RC line |
-| 8.0.RC1 | 2.2.0 | 2.2.0 | 3.8-3.10 | v2.2.0-6.0.rc1 | Older RC line |
-| 8.0.RC1 | 2.1.0 | 2.1.0.post4 | 3.8-3.11 | v2.1.0-6.0.rc1 | Older RC line |
-| 7.0.0 | 2.1.0 | 2.1.0 | 3.8-3.11 | v2.1.0-5.0.0 | Legacy support |
 
 Validation checklist:
 - `torch` import succeeds

@@ -48,10 +48,20 @@ def test_ascend_reference_exists_and_has_required_sections():
 
 def test_ascend_reference_has_exact_pta_rows_for_26_to_29():
     content = read_text(REFERENCES_DIR / "ascend-compat.md")
-    assert "| 8.5.0 | 2.9.0 | 2.9.0 |" in content
+    assert "| 8.5.0 | 2.9.0 | 2.9.0 | 3.9-3.11 | v2.9.0-7.3.0 |" in content
     assert "| 8.5.0 | 2.8.0 | 2.8.0.post2 | 3.9-3.11 | v2.8.0-7.3.0 |" in content
     assert "| 8.5.0 | 2.7.1 | 2.7.1.post2 | 3.9-3.11 | v2.7.1-7.3.0 |" in content
     assert "| 8.5.0 | 2.6.0 | 2.6.0.post5 | 3.9-3.11 | v2.6.0-7.3.0 |" in content
+
+
+def test_ascend_reference_limits_local_pta_table_to_81rc1_through_85():
+    content = read_text(REFERENCES_DIR / "ascend-compat.md")
+    assert "| 8.1.RC1 | 2.5.1 | 2.5.1 | 3.9-3.11 | v2.5.1-7.0.0 |" in content
+    assert "| 8.0.0 | 2.4.0 | 2.4.0.post2 |" not in content
+    assert "| 8.0.RC3 | 2.4.0 | 2.4.0 |" not in content
+    assert "| 8.0.RC2 | 2.3.1 | 2.3.1 |" not in content
+    assert "| 8.0.RC1 | 2.2.0 | 2.2.0 |" not in content
+    assert "| 7.0.0 | 2.1.0 | 2.1.0 |" not in content
 
 
 def test_ascend_reference_documents_pta_lookup_order_and_remote_fallback():
@@ -66,10 +76,37 @@ def test_ascend_reference_documents_pta_lookup_order_and_remote_fallback():
 
 def test_ascend_reference_documents_mindspore_replacement_guidance():
     content = read_text(REFERENCES_DIR / "ascend-compat.md")
-    assert "Recommended Replacement" in content
+    assert "| CANN | MindSpore | Python | Typical Use |" in content
     assert "if the installed MindSpore version is incompatible but a compatible local" in content
     assert "replacement can be derived, recommend replacement inside the selected `uv`" in content
     assert "installed version incompatible but replacement available locally" in content
+
+
+def test_ascend_reference_uses_local_first_mindspore_policy_with_versions_lookup():
+    content = read_text(REFERENCES_DIR / "ascend-compat.md")
+    assert "1. local MindSpore compatibility table" in content
+    assert "2. official `https://www.mindspore.cn/versions` page for the detected release" in content
+    assert "user-confirmed reference" in content
+    assert "keep the MindSpore path `WARN`" in content
+    assert "local table only" not in content
+    assert "do not fetch remote compatibility data for MindSpore during a normal" not in content
+
+
+def test_ascend_reference_has_exact_mindspore_rows_for_270rc1_to_280():
+    content = read_text(REFERENCES_DIR / "ascend-compat.md")
+    assert "| 8.5.0 | 2.8.0 | 3.9-3.12 |" in content
+    assert "| 8.5.0 | 2.7.2 | 3.9-3.12 |" in content
+    assert "| 8.3.RC1 | 2.8.0 | 3.9-3.12 |" in content
+    assert "| 8.3.RC1 | 2.7.1 | 3.9-3.11 |" in content
+    assert "| 8.2.RC1 | 2.7.0 | 3.9-3.11 |" in content
+    assert "| 8.2.RC1 | 2.7.0-rc1 | 3.9-3.11 |" in content
+
+
+def test_ascend_reference_marks_mindspore_python_unknowns_as_warn():
+    content = read_text(REFERENCES_DIR / "ascend-compat.md")
+    assert "if the official page does not clearly publish Python support for that row," in content
+    assert "local row or official lookup that still requires manual Python confirmation:" in content
+    assert "`WARN`" in content
 
 
 def test_execution_reference_exists_and_has_required_sections():
@@ -302,12 +339,25 @@ def test_skill_uses_cann_first_framework_resolution():
     assert "2. Detect the selected `uv` environment Python version" in content
     assert "3. Resolve compatible framework candidates from" in content
     assert "`references/ascend-compat.md`" in content
-    assert "4. For PTA only, if the local table does not classify the tuple, prefer the" in content
-    assert "5. Compare the installed framework version against the compatible candidate set" in content
-    assert "6. Run the framework smoke test only after compatibility classification" in content
+    assert "4. For MindSpore only, if the local table does not classify the tuple, look up" in content
+    assert "5. For PTA only, if the local table does not classify the tuple, prefer the" in content
+    assert "6. Compare the installed framework version against the compatible candidate set" in content
+    assert "7. Run the framework smoke test only after compatibility classification" in content
     assert "For each framework path, use this remediation order:" in content
     assert "1. Resolve the compatible target version from the detected CANN version and the" in content
     assert "4. If the framework is installed but incompatible, ask for confirmation before" in content
+
+
+def test_skill_and_remediation_require_versions_lookup_before_mindspore_replacement():
+    skill_content = read_text(SKILL_MD)
+    content = read_text(REFERENCES_DIR / "framework-remediation.md")
+    assert "For MindSpore only, if the local table cannot classify the tuple, check the" in skill_content
+    assert "official `https://www.mindspore.cn/versions` page" in skill_content
+    assert "ask the user to confirm before" in skill_content
+    assert "check the official `https://www.mindspore.cn/versions` page" in content
+    assert "the official CANN pairing, and whether the Python support range is still unclear" in content
+    assert "official page confirms the CANN pairing but does not clearly confirm" in content
+    assert "keep the MindSpore path as `WARN`" in content
 
 
 def test_skill_documents_framework_replacement_after_confirmation():

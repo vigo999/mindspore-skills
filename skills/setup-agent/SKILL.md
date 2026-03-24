@@ -219,12 +219,15 @@ Use this order:
 1. Detect the current CANN version from the system-layer evidence
 2. Detect the selected `uv` environment Python version
 3. Resolve compatible framework candidates from `references/ascend-compat.md`
-4. Load `references/framework-remediation.md` before changing framework
+4. For MindSpore only, if the local table cannot classify the tuple, check the
+   official `https://www.mindspore.cn/versions` page for that release and use
+   the result only as user-confirmed reference data
+5. Load `references/framework-remediation.md` before changing framework
    packages or retrying failed imports
-5. For PTA only, use `scripts/pta_compat_lookup.py` with remote fallback when
+6. For PTA only, use `scripts/pta_compat_lookup.py` with remote fallback when
    the local table cannot classify the tuple
-6. Compare the installed framework version against the compatible candidate set
-7. Run the framework smoke test only after compatibility classification
+7. Compare the installed framework version against the compatible candidate set
+8. Run the framework smoke test only after compatibility classification
 
 ### MindSpore path
 
@@ -244,6 +247,10 @@ Then follow `references/framework-remediation.md`:
 Always use `references/ascend-compat.md` to resolve the compatible MindSpore
 target version for the detected CANN version and current Python version before
 installing or replacing the package.
+If the local table cannot classify the tuple, check the official
+`https://www.mindspore.cn/versions` page, print the detected MindSpore
+version and the official CANN pairing, and ask the user to confirm before
+recommending installation or replacement.
 
 ### PTA path (`torch` + `torch_npu`)
 
@@ -264,7 +271,7 @@ Then follow `references/framework-remediation.md`:
 Use the bundled helper when deterministic PTA lookup is needed:
 
 ```bash
-python scripts/pta_compat_lookup.py --cann 8.1.RC1 --torch 2.4.0 --torch-npu 2.4.0.post4 --python 3.10 --remote-fallback
+python scripts/pta_compat_lookup.py --cann <detected_cann> --torch <installed_or_target_torch> --torch-npu <installed_or_target_torch_npu> --python <python_version> --remote-fallback
 ```
 
 If both framework paths are unhealthy, report both independently.

@@ -35,15 +35,19 @@ For each framework path, use this order:
 2. Detect the selected `uv` environment Python version
 3. Resolve compatible framework candidates from
    `references/ascend-compat.md`
-4. For PTA only, if the local table does not classify the tuple, prefer the
+4. For MindSpore only, if the local table does not classify the tuple, look up
+   the detected release on the official `https://www.mindspore.cn/versions`
+   page and treat that result as user-confirmed reference data rather than
+   silent auto-remediation input
+5. For PTA only, if the local table does not classify the tuple, prefer the
    bundled helper:
 
 ```bash
 python scripts/pta_compat_lookup.py --cann 8.1.RC1 --torch 2.4.0 --torch-npu 2.4.0.post4 --python 3.10 --remote-fallback
 ```
 
-5. Compare the installed framework version against the compatible candidate set
-6. Run the framework smoke test only after compatibility classification
+6. Compare the installed framework version against the compatible candidate set
+7. Run the framework smoke test only after compatibility classification
 
 For each framework path, use this remediation order:
 
@@ -69,15 +73,25 @@ python -c "import mindspore as ms; ms.set_context(device_target='Ascend'); print
 
 Missing package handling:
 - remind the user to verify the Ascend system layer first
-- resolve the compatible MindSpore target version for the detected CANN version
-  and current Python version
+- resolve the compatible MindSpore target version from the exact local
+  CANN-keyed MindSpore table and the current Python version
+- if the local table cannot classify the tuple, check the official `https://www.mindspore.cn/versions` page for the detected release and print the detected MindSpore version, the official CANN pairing, and whether the Python support range is still unclear
+- check the official `https://www.mindspore.cn/versions` page before
+  recommending MindSpore installation when the local table cannot classify the
+  tuple
+- if the official page still leaves Python support or replacement safety
+  unclear, keep the MindSpore path as `WARN` and ask the user to confirm the
+  tuple before recommending installation
 - install that version directly inside the selected `uv` environment, for
   example with `pip install mindspore==<resolved_version>`
 - after installation, re-run the MindSpore import and Ascend context smoke test
 
 Installed package handling:
-- compare the installed version against the local MindSpore compatibility table
-  for the detected CANN version and current Python version
+- compare the installed version against the exact local MindSpore
+  compatibility row for the detected CANN version and current Python version
+- if the local table cannot classify the tuple, check the official
+  `https://www.mindspore.cn/versions` page before deciding whether the tuple
+  is unknown
 - classify installed-and-compatible MindSpore as `PASS`
 - classify installed-but-incompatible MindSpore as `FAIL`
 - if a compatible replacement can be derived from the local table:
@@ -87,10 +101,19 @@ Installed package handling:
     environment
   - after replacement, re-run the import and Ascend context smoke test before
     reclassifying MindSpore as healthy
+- if the official page confirms the CANN pairing but does not clearly confirm
+  Python support or replacement safety:
+  - print the detected MindSpore version, the official CANN pairing, and the
+    missing Python confirmation
+  - keep the MindSpore path as `WARN`
+  - ask the user to confirm the tuple before recommending installation or
+    replacement
 - if no compatible replacement can be derived:
   - keep the MindSpore path as `WARN`
   - tell the user the local compatibility table could not resolve a supported
     MindSpore replacement for the detected CANN version
+  - tell the user to verify the official `versions` page before replacing
+    MindSpore
 
 Import or smoke-test dependency handling:
 - if the import or smoke test fails because a Python package is missing:

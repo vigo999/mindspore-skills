@@ -836,17 +836,85 @@ Files changed:
      - Renamed from `rework-trace-2026-03-20.md` to `rework-trace.md`
      - Updated to include all 2026-03-24 changes in the running trace
 
+### 2026-03-24 - MindSpore local compatibility policy switched to exact CANN-keyed rows plus official versions confirmation
+
+Trigger:
+- The MindSpore compatibility path needed a newer local table covering the
+  officially confirmed `2.7.0-rc1` through `2.8.0` rows.
+- The previous MindSpore local table structure no longer matched the intended
+  source policy once the newer official `versions` pages became the reference
+  for unknown tuples.
+- After the table was updated, the rest of the skill documentation and tests
+  needed to be brought back into alignment with the new exact CANN-keyed
+  MindSpore table.
+
+Files changed:
+
+1. `skills/setup-agent/SKILL.md`
+   - Description: Main execution prompt used by the model
+   - Change:
+     - Kept MindSpore compatibility local-first
+     - Clarified that unknown local MindSpore tuples should be checked against
+       the official `https://www.mindspore.cn/versions` page
+     - Clarified that official `versions` lookup is user-confirmed reference
+       data, not silent auto-remediation input
+
+2. `skills/setup-agent/references/ascend-compat.md`
+   - Description: Compatibility lookup and repair policy
+   - Change:
+     - Replaced the older MindSpore table shape with an exact
+       `CANN | MindSpore | Python | Typical Use` local table
+     - Added local MindSpore rows for:
+       - `8.5.0 -> 2.8.0`
+       - `8.5.0 -> 2.7.2`
+       - `8.3.RC1 -> 2.8.0`
+       - `8.3.RC1 -> 2.7.1`
+       - `8.2.RC1 -> 2.7.0`
+       - `8.2.RC1 -> 2.7.0-rc1`
+     - Changed MindSpore validation and decision rules to use exact
+       CANN-keyed local row matching instead of the old
+       `Recommended CANN / Minimum CANN / Recommended Replacement` structure
+     - Added official `versions` anchors as the verification source for the
+       newer MindSpore rows
+
+3. `skills/setup-agent/references/framework-remediation.md`
+   - Description: Framework-layer execution reference
+   - Change:
+     - Updated MindSpore missing-package and installed-package handling to
+       resolve compatibility from the exact local CANN-keyed MindSpore table
+     - Kept unknown MindSpore tuple handling on the official `versions` page
+       plus user confirmation
+     - Preserved `WARN` behavior when official confirmation is still
+       incomplete
+
+4. `skills/setup-agent/tests/test_references.py`
+   - Description: Behavior-contract tests for the skill prompt and references
+   - Change:
+     - Replaced the older MindSpore table-shape assertions with checks for the
+       new exact CANN-keyed local table
+     - Added regression checks that the local-first plus official `versions`
+       lookup policy remains documented
+     - Added coverage for the new `2.7.0-rc1` through `2.8.0` MindSpore rows
+
+5. `skills/setup-agent/doc/rework-trace.md`
+   - Description: Long-lived trace for the skill's rework history
+   - Change:
+     - Added this entry so the MindSpore compatibility policy and table change
+       remains reconstructable without relying on commit history alone
+
 ## Latest Validation Snapshot
 
-Validation performed after the 2026-03-24 refactor:
+Validation performed after the latest 2026-03-24 MindSpore compatibility
+update:
 
 ```bash
-python -m py_compile skills/setup-agent/scripts/pta_compat_lookup.py
-python -m pytest skills/setup-agent/tests/test_references.py skills/setup-agent/tests/test_manifest_contract.py
+pytest -q skills/setup-agent/tests/test_references.py
+pytest -q skills/setup-agent/tests/test_manifest_contract.py
 ```
 
 Result:
-- `45 passed`
+- `49 passed` in `skills/setup-agent/tests/test_references.py`
+- `1 passed` in `skills/setup-agent/tests/test_manifest_contract.py`
 
 ## Practical Guidance For Future Editors
 
