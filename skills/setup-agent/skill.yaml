@@ -1,7 +1,7 @@
 schema_version: "1.1.0"
 name: "setup-agent"
 display_name: "Setup Agent"
-description: "Validate and remediate local Ascend/NPU environments for MindSpore and torch_npu workloads, ensure uv is directly resolvable, reuse or download a model workspace, repair Python dependencies inside a user-confirmed uv environment, and emit a standard report."
+description: "Validate and remediate local Ascend/NPU environments for MindSpore and torch_npu workloads, ensure uv is directly resolvable, reuse or download a model workspace, repair Python dependencies inside a user-confirmed uv environment, and emit console-visible execution evidence plus a final mailbox summary."
 version: "0.6.0"
 
 entry:
@@ -26,27 +26,27 @@ inputs:
     type: "string"
     required: false
     default: "mindspore,torch_npu"
-    description: "Comma-separated framework paths to inspect inside the uv environment."
+    description: "Preferred framework-reporting emphasis inside the uv environment. Treat this as a hint only; the agent must still check and report both the MindSpore and PTA paths."
   - name: "task_type"
     type: "enum"
     required: false
-    default: "general"
-    choices: ["general", "training", "inference", "diffusion"]
-    description: "Used to decide whether optional runtime packages such as diffusers should be checked."
+    default: "training"
+    choices: ["training", "inference"]
+    description: "Used to classify workspace expectations and reporting, such as training-script handling. It does not disable standard runtime dependency checks."
   - name: "uv_env_mode"
     type: "enum"
     required: false
     default: "ask"
     choices: ["reuse", "create", "ask"]
-    description: "How to choose the target uv environment."
+    description: "Hint for which uv environment path to discuss first. The agent must still ask the user whether to reuse an existing environment or create a new one."
   - name: "python_version"
     type: "string"
     required: false
-    description: "Python version to use when creating a new uv environment."
+    description: "Preferred Python version to propose when creating a new uv environment. The agent must still ask for confirmation before creating the environment."
   - name: "model_id"
     type: "string"
     required: false
-    description: "Hugging Face repo id to download when no local model directory is selected."
+    description: "Preferred Hugging Face repo id to suggest when no local model directory is selected. The agent must still ask which model to download and ask for confirmation before downloading."
   - name: "model_root"
     type: "string"
     required: false
@@ -56,7 +56,7 @@ inputs:
     type: "string"
     required: false
     default: "https://huggingface.co"
-    description: "Hugging Face endpoint to use for model download. Switch to a China mirror such as https://hf-mirror.com when direct download has network issues."
+    description: "Preferred Hugging Face endpoint for the initial user-confirmed download attempt. If unset, try the default direct download first and fall back to https://hf-mirror.com only after a network-reachability failure."
 
 permissions:
   network: "required"

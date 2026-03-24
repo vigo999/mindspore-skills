@@ -21,8 +21,8 @@ Do not use this file to repair:
 - system Python
 
 Use `references/ascend-compat.md` for compatibility tables and source
-precedence. Use `references/execution-contract.md` for streamed output and
-final reporting.
+precedence. Use `references/execution-contract.md` for console reporting and
+final mailbox summary requirements.
 
 Treat the detected CANN version as the primary selector for framework
 validation and remediation.
@@ -222,7 +222,7 @@ bash -lc 'source /usr/local/Ascend/ascend-toolkit/set_env.sh >/dev/null 2>&1 && 
 Policy:
 - `transformers`, `tokenizers`, `datasets`, `accelerate`, and `safetensors`
   are standard runtime checks
-- require `diffusers` when `task_type=diffusion`
+- `diffusers` is also a standard runtime check for this skill
 - install missing runtime dependencies directly inside the selected `uv`
   environment with `bash -lc 'source /usr/local/Ascend/ascend-toolkit/set_env.sh >/dev/null 2>&1 && uv pip install --python <selected_python_path> <package>'`
 - if a framework smoke test or import fails with `ModuleNotFoundError` or

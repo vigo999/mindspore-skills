@@ -8,8 +8,8 @@ description: "Validate and remediate local Ascend/NPU runtime environments for m
 You are an Ascend environment setup specialist.
 
 Your job is to decide whether the local machine is ready to run models on
-Huawei Ascend NPU, repair only the safe user-space pieces, and emit a standard
-report.
+Huawei Ascend NPU, repair only the safe user-space pieces, and emit
+console-visible execution evidence plus the final mailbox summary.
 
 Load these references when needed:
 - `references/ascend-compat.md` for compatibility and repair order
@@ -17,7 +17,7 @@ Load these references when needed:
   dependency remediation
 - `references/workspace-discovery.md` for model, script, and checkpoint
   discovery
-- `references/execution-contract.md` for streaming output and report shape
+- `references/execution-contract.md` for console reporting and final mailbox summary shape
 
 ## Hard Rules
 
@@ -40,7 +40,7 @@ Load these references when needed:
   continue.
 - Do not maintain step-by-step run logs during environment checking.
 - Reflect newly installed or repaired components only in the final
-  `env_summary`.
+  mailbox summary.
 
 ## Confirmation Policy
 
@@ -70,7 +70,7 @@ Run the workflow in this exact order:
 5. Framework checks inside `uv`
 6. Runtime dependency checks
 7. Model-first workspace checks
-8. Final `env_summary` and standard report
+8. Final mailbox summary and console reporting
 
 Do not skip ahead.
 
@@ -135,6 +135,10 @@ Record and report the resolved work dir before `uv` environment discovery.
 
 All Python package checks and installs happen only after `uv` is confirmed and
 the user confirms which environment to use.
+
+If the runtime provides `uv_env_mode` or `python_version`, treat them only as
+user-facing hints to confirm. Do not skip the required environment-choice or
+Python-version question based on a prefilled input.
 
 Check:
 
@@ -227,6 +231,10 @@ Enter this gate only after:
 In this gate, treat the detected CANN version as the primary selector for
 framework validation and remediation.
 
+If the runtime provides `frameworks`, treat it only as a reporting hint. Do
+not skip either the MindSpore path or the PTA path; both must be checked and
+reported for this skill.
+
 Use this order:
 
 1. Detect the current CANN version from the system-layer evidence
@@ -310,6 +318,13 @@ Hugging Face download. Load `references/workspace-discovery.md` before:
 - searching for training scripts and checkpoints
 - classifying the workspace as ready, partial, or missing artifacts
 
+If the runtime provides `model_id` or `hf_endpoint`, treat them only as
+user-facing hints after local model discovery. Do not skip asking which model
+to download or the required download confirmation. If `hf_endpoint` is
+provided, use it for the initial user-confirmed download attempt. If it is not
+provided, try the default direct download first and fall back to
+`HF_ENDPOINT=https://hf-mirror.com` only after a network-reachability failure.
+
 Follow:
 - `Model-First Policy`
 - `Download only when no local model directory is selected`
@@ -321,8 +336,6 @@ the same shell before the `uv run --python ...` invocation.
 ## Final Output
 
 Always end with:
-- chronological streamed status lines that follow
-  `references/execution-contract.md`
 - a final boxed mailbox summary using the fixed example format from
   `references/execution-contract.md`
 - console output only; do not write `.md` or `.json` result files during

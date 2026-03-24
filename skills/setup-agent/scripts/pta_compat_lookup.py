@@ -150,8 +150,13 @@ def main() -> int:
     matches = filter_rows(local_rows, args.cann, args.torch, args.torch_npu, args.python)
     source = "local"
 
+    remote_error = None
     if not matches and args.remote_fallback:
-        remote_rows = parse_remote_table()
+        try:
+            remote_rows = parse_remote_table()
+        except Exception as exc:  # pragma: no cover - exercised via behavior test
+            remote_rows = []
+            remote_error = str(exc)
         matches = filter_rows(remote_rows, args.cann, args.torch, args.torch_npu, args.python)
         source = "remote" if matches else "unresolved"
 
@@ -165,6 +170,8 @@ def main() -> int:
         },
         "matches": matches,
     }
+    if remote_error is not None:
+        result["remote_error"] = remote_error
     json.dump(result, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
     return 0

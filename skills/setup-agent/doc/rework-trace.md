@@ -1128,10 +1128,264 @@ Files changed:
      - Added regression checks for same-shell `set_env.sh` sourcing in
        framework, install, helper, and download command examples
 
+### 2026-03-24 - Streaming console output requirement removed from the execution contract
+
+Trigger:
+- The execution contract still required a real-time step-by-step streaming
+  console format, but the intended UX no longer needs per-step `checking ...`
+  lines during execution.
+- The active contract should keep console-visible evidence and the final boxed
+  mailbox summary, while removing the obligation to emit chronological
+  start/finish status lines for every major step.
+- Supporting references and tests still encoded the old streaming requirement,
+  so the documentation set needed a synchronized update.
+
+Files changed:
+
+1. `skills/setup-agent/references/execution-contract.md`
+   - Description: Runtime UX and reporting contract
+   - Change:
+     - Removed the `## Streaming Console Output` section and its required
+       `checking ...` / per-step status format
+     - Reframed the contract around console-visible execution evidence plus
+       the final boxed mailbox summary
+
+2. `skills/setup-agent/SKILL.md`
+   - Description: Main execution prompt used by the model
+   - Change:
+     - Changed the execution-contract reference from "streaming output and
+       report shape" to "console reporting and final report shape"
+     - Removed the final-output requirement for chronological streamed status
+       lines while preserving the fixed mailbox summary and console-only
+       artifact policy
+
+3. `skills/setup-agent/references/framework-remediation.md`
+   - Description: Framework-layer execution reference
+   - Change:
+     - Updated the execution-contract cross-reference so it points to console
+       reporting and final mailbox summary requirements instead of streamed
+       output
+
+4. `skills/setup-agent/tests/test_references.py`
+   - Description: Behavior-contract tests for the skill prompt and references
+   - Change:
+     - Removed assertions that required the streaming-output section and
+       example lines
+     - Replaced them with regression coverage for the remaining console
+       contract and fixed mailbox summary requirements
+
+### 2026-03-24 - Prefilled manifest inputs downgraded to hints that cannot bypass required user questions
+
+Trigger:
+- The skill manifest exposed inputs such as `uv_env_mode`, `python_version`,
+  `model_id`, and `hf_endpoint`, but the intended setup-agent UX still requires
+  asking the user to choose or confirm the uv environment and to choose and
+  confirm any Hugging Face model download.
+- The active contract should allow prefilled values to shape the conversation
+  only as suggestions, not as silent instructions that bypass required
+  confirmation gates.
+
+Files changed:
+
+1. `skills/setup-agent/SKILL.md`
+   - Description: Main execution prompt used by the model
+   - Change:
+     - Added explicit rules that prefilled `uv_env_mode` and
+       `python_version` inputs are hints only and cannot skip the required
+       environment-choice or Python-version question
+     - Added explicit rules that prefilled `model_id` and `hf_endpoint`
+       inputs are hints only and cannot skip model-selection or
+       download-confirmation prompts
+
+2. `skills/setup-agent/skill.yaml`
+   - Description: Skill manifest and external input contract
+   - Change:
+     - Reworded `frameworks`, `uv_env_mode`, `python_version`, `model_id`,
+       and `hf_endpoint` so they are described as hints or preferences rather
+       than silent control inputs
+     - Preserved the existing input surface while making the confirmation
+       boundary explicit in the manifest itself
+
+3. `skills/setup-agent/tests/test_references.py`
+   - Description: Behavior-contract tests for the skill prompt and references
+   - Change:
+     - Added regression checks that the main prompt explicitly treats
+       prefilled env and model-download inputs as hints
+     - Added regression checks that the manifest descriptions preserve the
+       required user-confirmation boundary
+
+### 2026-03-24 - PTA remote fallback hardened and mailbox-summary terminology unified
+
+Trigger:
+- The PTA helper could raise on remote lookup failures even though the skill
+  contract expects unresolved remote PTA tuples to degrade to `WARN` rather
+  than abort the run.
+- `SKILL.md` still used the legacy `env_summary` term in a few places after the
+  reporting contract had already standardized on the final mailbox summary.
+
+Files changed:
+
+1. `skills/setup-agent/scripts/pta_compat_lookup.py`
+   - Description: Bundled helper for PTA compatibility resolution
+   - Change:
+     - Wrapped the remote fallback lookup so fetch or parse failures no longer
+       abort the helper
+     - Returned `source=unresolved` with `remote_error` when the remote
+       fallback path fails, preserving machine-readable output for the caller
+
+2. `skills/setup-agent/SKILL.md`
+   - Description: Main execution prompt used by the model
+   - Change:
+     - Replaced the remaining `env_summary` references with mailbox-summary
+       terminology so the prompt matches the execution contract
+
+3. `skills/setup-agent/tests/test_references.py`
+   - Description: Behavior-contract tests for the skill prompt and references
+   - Change:
+     - Added behavior tests that execute the PTA helper for a local-hit path
+       and a remote-failure path
+     - Added regression coverage that `SKILL.md` no longer uses the legacy
+       `env_summary` term
+
+### 2026-03-24 - Diffusers and frameworks semantics aligned with the intended always-check workflow
+
+Trigger:
+- Review feedback clarified that `diffusers` is not an optional runtime package
+  gated by `task_type`; it must be checked as part of the standard dependency
+  set for this skill.
+- Review feedback also clarified that the `frameworks` manifest input is not a
+  scope filter; both the MindSpore and PTA paths are always required for
+  setup-agent runs.
+
+Files changed:
+
+1. `skills/setup-agent/SKILL.md`
+   - Description: Main execution prompt used by the model
+   - Change:
+     - Added an explicit Gate 5 rule that the `frameworks` runtime input is a
+       reporting hint only and cannot skip either framework path
+
+2. `skills/setup-agent/references/framework-remediation.md`
+   - Description: Framework-layer execution reference
+   - Change:
+     - Replaced the old `task_type=diffusion` gating language with an explicit
+       statement that `diffusers` is part of the standard runtime dependency
+       checks for this skill
+
+3. `skills/setup-agent/skill.yaml`
+   - Description: Skill manifest and external input contract
+   - Change:
+     - Reworded `frameworks` so it is clearly a reporting-emphasis hint rather
+       than a path-selection control
+     - Reworded `task_type` so it is clearly about workspace/reporting
+       classification rather than dependency gating
+
+4. `skills/setup-agent/tests/test_references.py`
+   - Description: Behavior-contract tests for the skill prompt and references
+   - Change:
+     - Updated runtime-dependency assertions so `diffusers` is checked as part
+       of the standard dependency set
+     - Added regression coverage that `frameworks` cannot be used to skip the
+       MindSpore or PTA paths
+     - Added manifest regression coverage for the clarified `frameworks` and
+       `task_type` semantics
+
+### 2026-03-24 - task_type reduced to training/inference only
+
+Trigger:
+- The manifest still exposed `general` and `diffusion` as `task_type` values,
+  but the workspace classification contract only defined behavior for
+  `training` and `inference`.
+- Keeping the extra enum values would leave the most important workspace
+  readiness branch under-specified, especially for the default case.
+
+Files changed:
+
+1. `skills/setup-agent/skill.yaml`
+   - Description: Skill manifest and external input contract
+   - Change:
+     - Removed `general` and `diffusion` from `task_type`
+     - Set the default `task_type` to `training`
+
+2. `skills/setup-agent/tests/test_references.py`
+   - Description: Behavior-contract tests for the skill prompt and references
+   - Change:
+     - Added regression checks that `task_type` now defaults to `training`
+       and only allows `training` / `inference`
+
+### 2026-03-24 - hf_endpoint priority clarified for model downloads
+
+Trigger:
+- The manifest and main prompt described `hf_endpoint` as a download hint, but
+  the workspace download reference only defined "direct first, then
+  `hf-mirror.com`" and did not say when a caller-provided endpoint should be
+  used.
+- The intended contract is: if a custom `hf_endpoint` is provided, use it for
+  the initial user-confirmed download attempt; otherwise try the default direct
+  download first and only then fall back to `HF_ENDPOINT=https://hf-mirror.com`
+  on network reachability failures.
+
+Files changed:
+
+1. `skills/setup-agent/SKILL.md`
+   - Description: Main execution prompt used by the model
+   - Change:
+     - Clarified the exact priority order for `hf_endpoint` during the initial
+       Hugging Face download attempt and the later mirror fallback
+
+2. `skills/setup-agent/references/workspace-discovery.md`
+   - Description: Workspace download and artifact discovery reference
+   - Change:
+     - Added explicit download-order rules for caller-provided `hf_endpoint`
+       versus the default direct download path
+     - Added a custom-endpoint command example alongside the existing direct
+       and mirror patterns
+
+3. `skills/setup-agent/skill.yaml`
+   - Description: Skill manifest and external input contract
+   - Change:
+     - Reworded `hf_endpoint` so it explicitly means the initial
+       user-confirmed download endpoint rather than a vague preference
+
+4. `skills/setup-agent/tests/test_references.py`
+   - Description: Behavior-contract tests for the skill prompt and references
+   - Change:
+     - Added regression coverage for the new `hf_endpoint` priority order in
+       the prompt, workspace reference, and manifest
+
+### 2026-03-24 - Standard-report terminology removed in favor of mailbox-summary wording
+
+Trigger:
+- The skill contract had already standardized on console-visible execution
+  evidence plus the final mailbox summary, but `SKILL.md` and `skill.yaml`
+  still used the older "standard report" wording in a few places.
+
+Files changed:
+
+1. `skills/setup-agent/SKILL.md`
+   - Description: Main execution prompt used by the model
+   - Change:
+     - Replaced the remaining "standard report" and "final report shape"
+       wording with explicit console-reporting and final-mailbox-summary terms
+
+2. `skills/setup-agent/skill.yaml`
+   - Description: Skill manifest and external input contract
+   - Change:
+     - Reworded the skill description so it matches the final mailbox summary
+       contract rather than implying a separate standard report artifact
+
+3. `skills/setup-agent/tests/test_references.py`
+   - Description: Behavior-contract tests for the skill prompt and references
+   - Change:
+     - Added regression coverage that `SKILL.md` and `skill.yaml` no longer use
+       the old `standard report` terminology
+
 ## Latest Validation Snapshot
 
-Validation performed after the latest 2026-03-24 setup-agent consistency
-update:
+Validation performed after the latest 2026-03-24 execution-contract
+streaming-output removal, manifest-input confirmation alignment, PTA fallback
+hardening, always-check framework semantics alignment, task-type narrowing,
+hf_endpoint priority clarification, and mailbox-summary terminology cleanup:
 
 ```bash
 pytest -q skills/setup-agent/tests/test_references.py
@@ -1139,7 +1393,7 @@ pytest -q skills/setup-agent/tests/test_manifest_contract.py
 ```
 
 Result:
-- `54 passed` in `skills/setup-agent/tests/test_references.py`
+- `59 passed` in `skills/setup-agent/tests/test_references.py`
 - `1 passed` in `skills/setup-agent/tests/test_manifest_contract.py`
 
 ## Practical Guidance For Future Editors

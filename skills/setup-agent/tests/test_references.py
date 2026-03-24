@@ -1,5 +1,9 @@
+import importlib.util
+import json
+import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 
@@ -17,6 +21,16 @@ def read_text(path: Path) -> str:
 
 def read_yaml(path: Path):
     return yaml.safe_load(read_text(path))
+
+
+def load_pta_lookup_module():
+    module_path = SCRIPTS_DIR / "pta_compat_lookup.py"
+    spec = importlib.util.spec_from_file_location("setup_agent_pta_lookup", module_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec is not None
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_skill_md_stays_compact_after_refactor():
@@ -126,7 +140,6 @@ def test_execution_reference_exists_and_has_required_sections():
     path = REFERENCES_DIR / "execution-contract.md"
     content = read_text(path)
     assert path.exists()
-    assert "Streaming Console Output" in content
     assert "Console Contract" in content
     assert "Final Mailbox Summary" in content
 
@@ -162,6 +175,81 @@ def test_pta_lookup_script_exists():
     assert "--remote-fallback" in content
 
 
+def test_pta_lookup_uses_local_match_without_remote_fallback(monkeypatch, capsys):
+    module = load_pta_lookup_module()
+    local_rows = [
+        {
+            "source": "local",
+            "cann": "8.1.RC1",
+            "torch": "2.4.0",
+            "torch_npu": "2.4.0.post4",
+            "python": "3.8-3.11",
+            "branch": "v2.4.0-7.0.0",
+            "note": "local row",
+        }
+    ]
+    remote_called = False
+
+    def unexpected_remote():
+        nonlocal remote_called
+        remote_called = True
+        raise AssertionError("remote lookup should not run when local rows match")
+
+    monkeypatch.setattr(module, "parse_local_table", lambda: local_rows)
+    monkeypatch.setattr(module, "parse_remote_table", unexpected_remote)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "pta_compat_lookup.py",
+            "--cann",
+            "8.1.RC1",
+            "--torch",
+            "2.4.0+cpu",
+            "--torch-npu",
+            "2.4.0.post4",
+            "--python",
+            "3.10",
+        ],
+    )
+
+    assert module.main() == 0
+    result = json.loads(capsys.readouterr().out)
+    assert remote_called is False
+    assert result["source"] == "local"
+    assert result["matches"][0]["branch"] == "v2.4.0-7.0.0"
+    assert result["query"]["torch"] == "2.4.0"
+
+
+def test_pta_lookup_marks_unresolved_when_remote_lookup_fails(monkeypatch, capsys):
+    module = load_pta_lookup_module()
+
+    monkeypatch.setattr(module, "parse_local_table", lambda: [])
+    monkeypatch.setattr(module, "parse_remote_table", lambda: (_ for _ in ()).throw(OSError("network down")))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "pta_compat_lookup.py",
+            "--cann",
+            "8.1.RC1",
+            "--torch",
+            "2.4.0",
+            "--torch-npu",
+            "2.4.0.post4",
+            "--python",
+            "3.10",
+            "--remote-fallback",
+        ],
+    )
+
+    assert module.main() == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["source"] == "unresolved"
+    assert result["matches"] == []
+    assert result["remote_error"] == "network down"
+
+
 def test_skill_no_longer_mentions_gpu_or_nvidia_path():
     content = read_text(SKILL_MD)
     assert "This skill is Ascend-only." in content
@@ -177,6 +265,9 @@ def test_skill_requires_uv_before_python_installs():
     assert "Never install Python packages into the system interpreter." in content
     assert "`uv` is healthy only when both `command -v uv` and `uv --version` succeed." in content
     assert "Do not maintain step-by-step run logs during environment checking." in content
+    assert "`env_summary`" not in content
+    assert "mailbox summary" in content
+    assert "standard report" not in content
 
 
 def test_skill_uses_uv_scoped_python_examples():
@@ -206,11 +297,14 @@ def test_framework_remediation_uses_uv_scoped_python_and_installs():
     assert "<selected_python>" not in content
 
 
-def test_execution_contract_uses_uppercase_status_examples():
+def test_execution_contract_restricts_status_values():
     content = read_text(REFERENCES_DIR / "execution-contract.md")
-    assert "setup-agent : os PASS:" in content
-    assert "setup-agent : npu visibility FAIL:" in content
-    assert "setup-agent : training scripts PASS:" in content
+    assert "Use only these status values:" in content
+    assert "- `PASS`" in content
+    assert "- `FAIL`" in content
+    assert "- `WARN`" in content
+    assert "- `SKIP`" in content
+    assert "- `INFO`" in content
 
 
 def test_skill_has_explicit_confirmation_policy():
@@ -243,6 +337,9 @@ def test_skill_requires_confirming_uv_env_choice_and_python_version():
     content = read_text(SKILL_MD)
     assert "ask the user whether to reuse an existing environment or create a new one" in content
     assert "ask which Python version to use" in content
+    assert "If the runtime provides `uv_env_mode` or `python_version`, treat them only as" in content
+    assert "Do not skip the required environment-choice or" in content
+    assert "Python-version question based on a prefilled input." in content
 
 
 def test_skill_requires_uv_to_be_directly_resolvable_after_install():
@@ -294,11 +391,11 @@ def test_skill_installs_missing_frameworks_inside_uv():
     assert "`bash -lc 'source /usr/local/Ascend/ascend-toolkit/set_env.sh >/dev/null 2>&1 && uv pip install --python <selected_python_path> torch_npu==<resolved_torch_npu>'`" in content
 
 
-def test_skill_uses_task_type_to_gate_runtime_checks():
+def test_skill_uses_standard_runtime_dependency_checks():
     content = read_text(REFERENCES_DIR / "framework-remediation.md")
     assert "are standard runtime checks" in content
     assert "`transformers`, `tokenizers`, `datasets`, `accelerate`, and `safetensors`" in content
-    assert "require `diffusers` when `task_type=diffusion`" in content
+    assert "`diffusers` is also a standard runtime check for this skill" in content
     assert "install missing runtime dependencies directly inside the selected `uv`" in content
     assert "`ModuleNotFoundError` or" in content
     assert "`ImportError` for an installable Python package" in content
@@ -328,15 +425,18 @@ def test_skill_uses_snapshot_download_when_no_local_model_directory_exists():
     assert "use `huggingface_hub.snapshot_download` inside the selected `uv` environment" in content
     assert "download into `<workdir>/models/<repo_name>` by default unless `model_root`" in content
     assert "is already specified" in content
+    assert "- if `hf_endpoint` is provided, use that endpoint for the initial" in content
+    assert "- if `hf_endpoint` is not provided, try the default direct download first" in content
     assert "`HF_ENDPOINT=https://hf-mirror.com`" in content
-    assert "if the direct Hugging Face download fails because of DNS, timeout, proxy, or" in content
-    assert "other network reachability problems, retry with a China mirror" in content
+    assert "if the initial direct download fails because of DNS, timeout, proxy, or other" in content
+    assert "network reachability problems, retry with a China mirror" in content
     assert "if the repo is gated or private and authentication is missing, stop and" in content
     assert "do not treat authentication or permission failures as mirror candidates" in content
     assert "report a download/auth failure" in content
     assert "snapshot_download(repo_id=" in content
     assert "local_dir=" in content
     assert "source /usr/local/Ascend/ascend-toolkit/set_env.sh" in content
+    assert "HF_ENDPOINT=<hf_endpoint> uv run --python <selected_python_path>" in content
     assert "HF_ENDPOINT=https://hf-mirror.com uv run --python <selected_python_path>" in content
 
 
@@ -372,11 +472,25 @@ def test_skill_guides_huggingface_download_when_artifacts_are_missing():
     assert "if multiple candidate training scripts exist, show the list and ask the user" in content
 
 
+def test_skill_treats_prefilled_model_download_inputs_as_hints():
+    content = read_text(SKILL_MD)
+    assert "If the runtime provides `model_id` or `hf_endpoint`, treat them only as" in content
+    assert "Do not skip asking which model" in content
+    assert "required download confirmation." in content
+    assert "If `hf_endpoint` is" in content
+    assert "provided, use it for the initial user-confirmed download attempt." in content
+    assert "fall back to" in content
+    assert "`HF_ENDPOINT=https://hf-mirror.com` only after a network-reachability failure." in content
+
+
 def test_skill_reports_both_framework_paths():
     content = read_text(SKILL_MD)
     assert "### MindSpore path" in content
     assert "### PTA path (`torch` + `torch_npu`)" in content
     assert "If both framework paths are unhealthy, report both independently" in content
+    assert "If the runtime provides `frameworks`, treat it only as a reporting hint." in content
+    assert "not skip either the MindSpore path or the PTA path;" in content
+    assert "reported for this skill." in content
 
 
 def test_skill_uses_cann_first_framework_resolution():
@@ -439,7 +553,7 @@ def test_skill_installs_missing_python_deps_during_framework_checks():
 def test_skill_documents_console_only_contract():
     content = read_text(REFERENCES_DIR / "execution-contract.md")
     assert "Do not write `.md`, `.json`, or other result artifacts under `runs/`" in content
-    assert "streamed console output plus the" in content
+    assert "console-visible execution" in content
     assert "final boxed mailbox summary" in content
     assert "runs/<run_id>/out/" not in content
     assert "report.json" not in content
@@ -491,22 +605,11 @@ def test_skill_moves_workspace_and_framework_detail_out_of_skill_md():
     assert 'find "<selected_model_dir>" -type f' not in content
 
 
-def test_skill_requires_streaming_console_output():
+def test_skill_does_not_require_streaming_console_output():
     content = read_text(REFERENCES_DIR / "execution-contract.md")
-    assert "## Streaming Console Output" in content
-    assert "emit a `checking ...` line before every major step" in content
-    assert "emit a `PASS`, `FAIL`, `WARN`, or `SKIP` line after each step" in content
-    assert "Major steps that must stream:" in content
-    assert "setup-agent : checking work dir..." in content
-    assert "setup-agent : work dir PASS: /path/to/current/workdir" in content
-    assert "- local model directories" in content
-    assert "- model selection" in content
-    assert "- hugging face download" in content
-    assert "- training scripts" in content
-    assert "- checkpoint files" in content
-    assert "- final mailbox summary" in content
-    assert "setup-agent : training scripts PASS: ./train.py, ./scripts/finetune.py" in content
-    assert "setup-agent : checkpoint files PASS: ./weights/model.safetensors" in content
+    assert "## Streaming Console Output" not in content
+    assert "emit a `checking ...` line before every major step" not in content
+    assert "Major steps that must stream:" not in content
 
 
 def test_skill_requires_fixed_boxed_mailbox_summary():
@@ -535,7 +638,7 @@ def test_skill_requires_fixed_boxed_mailbox_summary():
     assert "| suggestion :" in content
 
 
-def test_execution_contract_uses_env_summary_instead_of_run_logs():
+def test_execution_contract_uses_mailbox_summary_instead_of_run_logs():
     content = read_text(REFERENCES_DIR / "execution-contract.md")
     assert "`logs/run.log`" not in content
     assert "`logs/verify.log`" not in content
@@ -557,6 +660,7 @@ def test_skill_points_final_output_to_fixed_mailbox_example():
     assert "a final boxed mailbox summary using the fixed example format from" in content
     assert "`references/execution-contract.md`" in content
     assert "do not write `.md` or `.json` result files during" in content
+    assert "chronological streamed status lines" not in content
 
 
 def test_manifest_matches_ascend_only_scope_and_permissions():
@@ -575,6 +679,34 @@ def test_manifest_declares_uv_and_framework_inputs():
     manifest = read_yaml(SKILL_YAML)
     input_names = {item["name"] for item in manifest["inputs"]}
     assert {"target", "frameworks", "task_type", "uv_env_mode", "python_version", "model_id", "model_root", "hf_endpoint"} <= input_names
+
+
+def test_manifest_marks_prefilled_env_and_model_inputs_as_hints():
+    manifest = read_yaml(SKILL_YAML)
+    inputs = {item["name"]: item for item in manifest["inputs"]}
+    assert "Treat this as a hint only" in inputs["frameworks"]["description"]
+    assert "must still check and report both the MindSpore and PTA paths" in inputs["frameworks"]["description"]
+    assert "must still ask the user whether to reuse an existing environment or create a new one" in inputs["uv_env_mode"]["description"]
+    assert "must still ask for confirmation before creating the environment" in inputs["python_version"]["description"]
+    assert "must still ask which model to download" in inputs["model_id"]["description"]
+    assert "ask for confirmation before downloading" in inputs["model_id"]["description"]
+    assert "Preferred Hugging Face endpoint for the initial user-confirmed download attempt" in inputs["hf_endpoint"]["description"]
+    assert "fall back to https://hf-mirror.com only after a network-reachability failure" in inputs["hf_endpoint"]["description"]
+
+
+def test_manifest_marks_task_type_as_reporting_not_dependency_gating():
+    manifest = read_yaml(SKILL_YAML)
+    inputs = {item["name"]: item for item in manifest["inputs"]}
+    assert "Used to classify workspace expectations and reporting" in inputs["task_type"]["description"]
+    assert "does not disable standard runtime dependency checks" in inputs["task_type"]["description"]
+    assert inputs["task_type"]["default"] == "training"
+    assert inputs["task_type"]["choices"] == ["training", "inference"]
+
+
+def test_manifest_uses_mailbox_summary_terminology():
+    manifest = read_yaml(SKILL_YAML)
+    assert "final mailbox summary" in manifest["description"]
+    assert "standard report" not in manifest["description"]
 
 
 def test_root_agents_exposes_setup_agent():

@@ -3,67 +3,11 @@
 This reference defines how `setup-agent` should behave at runtime from the
 user's perspective. Treat it as the UI and reporting contract.
 
-## Streaming Console Output
-
-During execution, print each step as it starts and when it finishes. Use short,
-status-first lines so the user can follow progress in real time.
-
-Preferred pattern:
-
-```text
-setup-agent : checking os...
-setup-agent : os PASS: Ubuntu 22.04 aarch64
-setup-agent : checking work dir...
-setup-agent : work dir PASS: /path/to/current/workdir
-setup-agent : checking npu visibility...
-setup-agent : npu visibility FAIL: `npu-smi` not available
-setup-agent : checking cann...
-setup-agent : cann FAIL: toolkit version file missing
-```
-
-Output rules:
-- emit a `checking ...` line before every major step
-- emit a `PASS`, `FAIL`, `WARN`, or `SKIP` line after each step
-- include the concrete reason in the same line
-- keep the stream chronological
-- if the workflow stops early, print the stop reason immediately
-- if no NPU is detected, print that later driver and CANN checks were skipped
-
-Major steps that must stream:
-- os
-- npu visibility
-- driver
-- cann
-- Ascend env sourcing
-- work dir
-- uv
-- uv environment selection
-- local model directories
-- model selection
-- hugging face download
-- MindSpore
-- torch
-- torch_npu
-- runtime dependencies
-- training scripts
-- checkpoint files
-- final mailbox summary
-
-When training scripts or checkpoint files are found, print the resolved file
-paths in the stream output.
-
-Preferred pattern:
-
-```text
-setup-agent : training scripts PASS: ./train.py, ./scripts/finetune.py
-setup-agent : checkpoint files PASS: ./weights/model.safetensors
-```
-
 ## Console Contract
 
 Do not write `.md`, `.json`, or other result artifacts under `runs/` during
-`setup-agent` execution. The run result is the streamed console output plus the
-final boxed mailbox summary.
+`setup-agent` execution. The run result is the console-visible execution
+evidence plus the final boxed mailbox summary.
 
 The console output must still cover:
 - OS information

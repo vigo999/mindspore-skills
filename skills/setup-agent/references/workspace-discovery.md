@@ -51,8 +51,11 @@ If no candidate model directory exists, or the user declines all candidates:
 - use `huggingface_hub.snapshot_download` inside the selected `uv` environment
 - download into `<workdir>/models/<repo_name>` by default unless `model_root`
   is already specified
-- if the direct Hugging Face download fails because of DNS, timeout, proxy, or
-  other network reachability problems, retry with a China mirror by setting
+- if `hf_endpoint` is provided, use that endpoint for the initial
+  user-confirmed download attempt
+- if `hf_endpoint` is not provided, try the default direct download first
+- if the initial direct download fails because of DNS, timeout, proxy, or other
+  network reachability problems, retry with a China mirror by setting
   `HF_ENDPOINT=https://hf-mirror.com`
 - if the repo is gated or private and authentication is missing, stop and
   report a download/auth failure instead of guessing
@@ -64,6 +67,12 @@ Example download pattern:
 
 ```bash
 bash -lc 'source /usr/local/Ascend/ascend-toolkit/set_env.sh >/dev/null 2>&1 && uv run --python <selected_python_path> python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='\''org/model'\'', local_dir='\''./models/model'\'', local_dir_use_symlinks=False)"'
+```
+
+Custom endpoint pattern:
+
+```bash
+bash -lc 'source /usr/local/Ascend/ascend-toolkit/set_env.sh >/dev/null 2>&1 && HF_ENDPOINT=<hf_endpoint> uv run --python <selected_python_path> python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='\''org/model'\'', local_dir='\''./models/model'\'', local_dir_use_symlinks=False)"'
 ```
 
 Mirror retry pattern:
