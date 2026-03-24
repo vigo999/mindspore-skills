@@ -79,7 +79,7 @@ Run:
 
 ```bash
 bash -lc 'source /usr/local/Ascend/ascend-toolkit/set_env.sh >/dev/null 2>&1 && uv run --python <selected_python_path> python -c "import mindspore as ms; print(ms.__version__)"' 2>/dev/null
-bash -lc 'source /usr/local/Ascend/ascend-toolkit/set_env.sh >/dev/null 2>&1 && uv run --python <selected_python_path> python -c "import mindspore as ms; ms.set_context(device_target='\''Ascend'\''); print('\''mindspore_ascend_ok'\'')"' 2>/dev/null
+bash -lc 'source /usr/local/Ascend/ascend-toolkit/set_env.sh >/dev/null 2>&1 && uv run --python <selected_python_path> python -c "import mindspore as ms; ms.set_context(device_target='\''Ascend'\''); print('\''mindspore ascend smoke test success'\'')"' 2>/dev/null
 ```
 
 Missing package handling:
@@ -141,7 +141,7 @@ Run:
 ```bash
 bash -lc 'source /usr/local/Ascend/ascend-toolkit/set_env.sh >/dev/null 2>&1 && uv run --python <selected_python_path> python -c "import torch; print(torch.__version__)"' 2>/dev/null
 bash -lc 'source /usr/local/Ascend/ascend-toolkit/set_env.sh >/dev/null 2>&1 && uv run --python <selected_python_path> python -c "import torch_npu; print(torch_npu.__version__)"' 2>/dev/null
-bash -lc 'source /usr/local/Ascend/ascend-toolkit/set_env.sh >/dev/null 2>&1 && uv run --python <selected_python_path> python -c "import torch, torch_npu; x=torch.tensor([1.0]).npu(); print('\''torch_npu_ok'\'', x)"' 2>/dev/null
+bash -lc 'source /usr/local/Ascend/ascend-toolkit/set_env.sh >/dev/null 2>&1 && uv run --python <selected_python_path> python -c "import torch, torch_npu; x=torch.tensor([1.0]).npu(); print('\''torch_npu smoke test success'\'', x)"' 2>/dev/null
 ```
 
 Normalize versions before lookup:
