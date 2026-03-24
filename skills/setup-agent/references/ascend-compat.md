@@ -93,17 +93,22 @@ CANN must match them before any framework path is considered.
 
 | CANN | Min Driver | Min Firmware | Supported Chips | Typical Use |
 |------|------------|--------------|-----------------|-------------|
+| 8.5.0 | 25.0.X | match the firmware from the paired Ascend HDK 25.0.X-25.5.X release | Ascend 910B/C | Open-stack line covering current 25.x HDK releases |
+| 8.3.RC1 | 25.3.rc1 | match the firmware from the paired Ascend HDK 25.3.RC1 release | Ascend 910B/C | Current RC line |
+| 8.2.RC1 | 25.2.0 | match the firmware from the paired Ascend HDK 25.2.0 release | Ascend 910B/C | Transitional line |
 | 8.1.RC1 | 24.1.rc3 | 7.5.0.1.129 | Ascend 910B/C | Newer 910B/910C deployments |
 | 8.0.RC3 | 24.1.rc2 | 7.3.0.1.100 | Ascend 910B/C | Common production baseline |
 | 8.0.RC2 | 24.1.rc1 | 7.1.0.6.220 | Ascend 910B | Transitional release |
 | 8.0.RC1 | 23.0.6 | 7.1.0.5.220 | Ascend 910B | Older 910B stacks |
-| 7.3.0 | 23.0.5 | 7.1.0.3.220 | Ascend 910A/B | Legacy supported path |
-| 7.1.0 | 23.0.3 | 7.1.0.1.220 | Ascend 910A/B | Legacy supported path |
 
 Interpretation:
 - `PASS`: driver and firmware meet or exceed the minimum for the detected CANN
 - `FAIL`: driver or firmware is below the required minimum
 - `WARN`: one of the detected versions is not in the table
+- for newer 25.x lines where the public compatibility source is published as an
+  Ascend HDK pairing rather than a single firmware build number, treat the
+  listed `Min Firmware` cell as "firmware must come from the same paired
+  Ascend HDK release"
 
 Stop conditions:
 - no Ascend NPU card is present on the machine
@@ -152,6 +157,8 @@ Decision rule:
 
 Official verification:
 - https://www.mindspore.cn/install
+- https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/releasenote/releasenote_0000.html
+- https://www.hiascend.com/document/detail/zh/ModelZoo/pytorchframework/ptes/ptes_00003.html
 - https://www.mindspore.cn/versions#2.8.0
 - https://www.mindspore.cn/versions#2.7.2
 - https://www.mindspore.cn/versions#2.7.1

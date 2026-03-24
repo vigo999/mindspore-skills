@@ -46,6 +46,19 @@ def test_ascend_reference_exists_and_has_required_sections():
     assert "Official Installation Guides" in content
 
 
+def test_ascend_reference_cann_matrix_covers_80rc1_through_85():
+    content = read_text(REFERENCES_DIR / "ascend-compat.md")
+    assert "| 8.5.0 | 25.0.X |" in content
+    assert "| 8.3.RC1 | 25.3.rc1 |" in content
+    assert "| 8.2.RC1 | 25.2.0 |" in content
+    assert "| 8.1.RC1 | 24.1.rc3 |" in content
+    assert "| 8.0.RC3 | 24.1.rc2 |" in content
+    assert "| 8.0.RC2 | 24.1.rc1 |" in content
+    assert "| 8.0.RC1 | 23.0.6 |" in content
+    assert "| 7.3.0 | 23.0.5 |" not in content
+    assert "| 7.1.0 | 23.0.3 |" not in content
+
+
 def test_ascend_reference_has_exact_pta_rows_for_26_to_29():
     content = read_text(REFERENCES_DIR / "ascend-compat.md")
     assert "| 8.5.0 | 2.9.0 | 2.9.0 | 3.9-3.11 | v2.9.0-7.3.0 |" in content
@@ -166,6 +179,28 @@ def test_skill_requires_uv_before_python_installs():
     assert "Do not maintain step-by-step run logs during environment checking." in content
 
 
+def test_skill_uses_uv_scoped_python_examples():
+    content = read_text(SKILL_MD)
+    assert "uv run --python .venv/bin/python python -V" in content
+    assert "uv run --python <selected_python> python -c \"import mindspore as ms; print(ms.__version__)\"" in content
+    assert "uv run --python <selected_python> python scripts/pta_compat_lookup.py" in content
+
+
+def test_framework_remediation_uses_uv_scoped_python_and_installs():
+    content = read_text(REFERENCES_DIR / "framework-remediation.md")
+    assert "uv run --python <selected_python> python -c \"import mindspore as ms; print(ms.__version__)\"" in content
+    assert "uv run --python <selected_python> python -c \"import torch; print(torch.__version__)\"" in content
+    assert "uv pip install --python <selected_python> mindspore==<resolved_version>" in content
+    assert "uv pip install --python <selected_python> <package>" in content
+
+
+def test_execution_contract_uses_uppercase_status_examples():
+    content = read_text(REFERENCES_DIR / "execution-contract.md")
+    assert "setup-agent : os PASS:" in content
+    assert "setup-agent : npu visibility FAIL:" in content
+    assert "setup-agent : training scripts PASS:" in content
+
+
 def test_skill_has_explicit_confirmation_policy():
     content = read_text(SKILL_MD)
     assert "## Confirmation Policy" in content
@@ -242,9 +277,9 @@ def test_skill_points_missing_system_components_to_hiascend_download_portal():
 def test_skill_installs_missing_frameworks_inside_uv():
     content = read_text(REFERENCES_DIR / "framework-remediation.md")
     assert "Missing package handling:" in content
-    assert "`pip install mindspore==<resolved_version>`" in content
-    assert "`pip install torch==<resolved_torch>`" in content
-    assert "`pip install torch_npu==<resolved_torch_npu>`" in content
+    assert "`uv pip install --python <selected_python> mindspore==<resolved_version>`" in content
+    assert "`uv pip install --python <selected_python> torch==<resolved_torch>`" in content
+    assert "`uv pip install --python <selected_python> torch_npu==<resolved_torch_npu>`" in content
 
 
 def test_skill_uses_task_type_to_gate_runtime_checks():
@@ -255,7 +290,7 @@ def test_skill_uses_task_type_to_gate_runtime_checks():
     assert "install missing runtime dependencies directly inside the selected `uv`" in content
     assert "`ModuleNotFoundError` or" in content
     assert "`ImportError` for an installable Python package" in content
-    assert "`pip install <package>`" in content
+    assert "`uv pip install --python <selected_python> <package>`" in content
 
 
 def test_skill_adds_model_first_workdir_artifact_phase():
@@ -413,7 +448,7 @@ def test_skill_documents_console_only_contract():
     assert "- framework compatibility reasoning" in content
     assert "- recommended compatible version(s)" in content
     assert "- whether a replacement was offered and whether the user confirmed it" in content
-    assert "- direct `pip install` remediation inside the selected `uv` environment" in content
+    assert "- direct `uv pip install --python ...` remediation inside the selected `uv` environment" in content
     assert "- Python packages installed to recover a failed framework import or smoke test" in content
     assert "- framework package installs or replacements performed inside the selected `uv`" in content
     assert "driver or" in content
@@ -441,18 +476,18 @@ def test_skill_requires_streaming_console_output():
     content = read_text(REFERENCES_DIR / "execution-contract.md")
     assert "## Streaming Console Output" in content
     assert "emit a `checking ...` line before every major step" in content
-    assert "emit a `passed`, `failed`, `warn`, or `skip` line after each step" in content
+    assert "emit a `PASS`, `FAIL`, `WARN`, or `SKIP` line after each step" in content
     assert "Major steps that must stream:" in content
     assert "setup-agent : checking work dir..." in content
-    assert "setup-agent : work dir passed: /path/to/current/workdir" in content
+    assert "setup-agent : work dir PASS: /path/to/current/workdir" in content
     assert "- local model directories" in content
     assert "- model selection" in content
     assert "- hugging face download" in content
     assert "- training scripts" in content
     assert "- checkpoint files" in content
     assert "- final mailbox summary" in content
-    assert "setup-agent : training scripts passed: ./train.py, ./scripts/finetune.py" in content
-    assert "setup-agent : checkpoint files passed: ./weights/model.safetensors" in content
+    assert "setup-agent : training scripts PASS: ./train.py, ./scripts/finetune.py" in content
+    assert "setup-agent : checkpoint files PASS: ./weights/model.safetensors" in content
 
 
 def test_skill_requires_fixed_boxed_mailbox_summary():

@@ -43,7 +43,7 @@ For each framework path, use this order:
    bundled helper:
 
 ```bash
-python scripts/pta_compat_lookup.py --cann 8.1.RC1 --torch 2.4.0 --torch-npu 2.4.0.post4 --python 3.10 --remote-fallback
+uv run --python <selected_python> python scripts/pta_compat_lookup.py --cann 8.1.RC1 --torch 2.4.0 --torch-npu 2.4.0.post4 --python 3.10 --remote-fallback
 ```
 
 6. Compare the installed framework version against the compatible candidate set
@@ -67,8 +67,8 @@ For each framework path, use this remediation order:
 Run:
 
 ```bash
-python -c "import mindspore as ms; print(ms.__version__)" 2>/dev/null
-python -c "import mindspore as ms; ms.set_context(device_target='Ascend'); print('mindspore_ascend_ok')" 2>/dev/null
+uv run --python <selected_python> python -c "import mindspore as ms; print(ms.__version__)" 2>/dev/null
+uv run --python <selected_python> python -c "import mindspore as ms; ms.set_context(device_target='Ascend'); print('mindspore_ascend_ok')" 2>/dev/null
 ```
 
 Missing package handling:
@@ -83,7 +83,7 @@ Missing package handling:
   unclear, keep the MindSpore path as `WARN` and ask the user to confirm the
   tuple before recommending installation
 - install that version directly inside the selected `uv` environment, for
-  example with `pip install mindspore==<resolved_version>`
+  example with `uv pip install --python <selected_python> mindspore==<resolved_version>`
 - after installation, re-run the MindSpore import and Ascend context smoke test
 
 Installed package handling:
@@ -118,7 +118,7 @@ Installed package handling:
 Import or smoke-test dependency handling:
 - if the import or smoke test fails because a Python package is missing:
 - if the missing package name is clear from the error, install it directly
-  inside the selected `uv` environment with `pip install <package>`
+  inside the selected `uv` environment with `uv pip install --python <selected_python> <package>`
 - if the package name cannot be identified with high confidence, stop and
   report the unresolved dependency name instead of guessing
 - re-run the failed check before classifying the MindSpore path
@@ -128,9 +128,9 @@ Import or smoke-test dependency handling:
 Run:
 
 ```bash
-python -c "import torch; print(torch.__version__)" 2>/dev/null
-python -c "import torch_npu; print(torch_npu.__version__)" 2>/dev/null
-python -c "import torch, torch_npu; x=torch.tensor([1.0]).npu(); print('torch_npu_ok', x)" 2>/dev/null
+uv run --python <selected_python> python -c "import torch; print(torch.__version__)" 2>/dev/null
+uv run --python <selected_python> python -c "import torch_npu; print(torch_npu.__version__)" 2>/dev/null
+uv run --python <selected_python> python -c "import torch, torch_npu; x=torch.tensor([1.0]).npu(); print('torch_npu_ok', x)" 2>/dev/null
 ```
 
 Normalize versions before lookup:
@@ -144,8 +144,8 @@ Missing package handling:
 - resolve the compatible PTA target tuple for the detected CANN version and
   current Python version
 - install the missing framework package or tuple directly inside the selected
-  `uv` environment, for example with `pip install torch==<resolved_torch>` and
-  `pip install torch_npu==<resolved_torch_npu>`
+  `uv` environment, for example with `uv pip install --python <selected_python> torch==<resolved_torch>` and
+  `uv pip install --python <selected_python> torch_npu==<resolved_torch_npu>`
 - after installation, re-run the PTA import and NPU tensor smoke test
 
 Installed package handling:
@@ -173,7 +173,7 @@ Installed package handling:
 Import or smoke-test dependency handling:
 - if the import or smoke test fails because a Python package is missing:
 - if the missing package name is clear from the error, install it directly
-  inside the selected `uv` environment with `pip install <package>`
+  inside the selected `uv` environment with `uv pip install --python <selected_python> <package>`
 - if the package name cannot be identified with high confidence, stop and
   report the unresolved dependency name instead of guessing
 - re-run the failed PTA check before classifying the framework path
@@ -200,12 +200,12 @@ If the exact PTA tuple remains unresolved after local and remote lookup:
 Run these package checks in the selected environment:
 
 ```bash
-python -c "import transformers; print(transformers.__version__)" 2>/dev/null
-python -c "import tokenizers; print(tokenizers.__version__)" 2>/dev/null
-python -c "import datasets; print(datasets.__version__)" 2>/dev/null
-python -c "import accelerate; print(accelerate.__version__)" 2>/dev/null
-python -c "import safetensors; print(safetensors.__version__)" 2>/dev/null
-python -c "import diffusers; print(diffusers.__version__)" 2>/dev/null
+uv run --python <selected_python> python -c "import transformers; print(transformers.__version__)" 2>/dev/null
+uv run --python <selected_python> python -c "import tokenizers; print(tokenizers.__version__)" 2>/dev/null
+uv run --python <selected_python> python -c "import datasets; print(datasets.__version__)" 2>/dev/null
+uv run --python <selected_python> python -c "import accelerate; print(accelerate.__version__)" 2>/dev/null
+uv run --python <selected_python> python -c "import safetensors; print(safetensors.__version__)" 2>/dev/null
+uv run --python <selected_python> python -c "import diffusers; print(diffusers.__version__)" 2>/dev/null
 ```
 
 Policy:
@@ -213,9 +213,11 @@ Policy:
   are standard runtime checks
 - require `diffusers` when `task_type=diffusion`
 - install missing runtime dependencies directly inside the selected `uv`
-  environment with `pip install <package>`
+  environment with `uv pip install --python <selected_python> <package>`
 - if a framework smoke test or import fails with `ModuleNotFoundError` or
   `ImportError` for an installable Python package, install that dependency
-  directly inside the selected `uv` environment and re-run the failed check
+  directly inside the selected `uv` environment with
+  `uv pip install --python <selected_python> <package>` and re-run the failed
+  check
 - do not guess a package name when the import error is ambiguous
 - ask for confirmation only when creating a new `uv` environment

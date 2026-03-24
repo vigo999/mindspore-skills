@@ -12,18 +12,18 @@ Preferred pattern:
 
 ```text
 setup-agent : checking os...
-setup-agent : os passed: Ubuntu 22.04 aarch64
+setup-agent : os PASS: Ubuntu 22.04 aarch64
 setup-agent : checking work dir...
-setup-agent : work dir passed: /path/to/current/workdir
+setup-agent : work dir PASS: /path/to/current/workdir
 setup-agent : checking npu visibility...
-setup-agent : npu visibility failed: `npu-smi` not available
+setup-agent : npu visibility FAIL: `npu-smi` not available
 setup-agent : checking cann...
-setup-agent : cann failed: toolkit version file missing
+setup-agent : cann FAIL: toolkit version file missing
 ```
 
 Output rules:
 - emit a `checking ...` line before every major step
-- emit a `passed`, `failed`, `warn`, or `skip` line after each step
+- emit a `PASS`, `FAIL`, `WARN`, or `SKIP` line after each step
 - include the concrete reason in the same line
 - keep the stream chronological
 - if the workflow stops early, print the stop reason immediately
@@ -55,8 +55,8 @@ paths in the stream output.
 Preferred pattern:
 
 ```text
-setup-agent : training scripts passed: ./train.py, ./scripts/finetune.py
-setup-agent : checkpoint files passed: ./weights/model.safetensors
+setup-agent : training scripts PASS: ./train.py, ./scripts/finetune.py
+setup-agent : checkpoint files PASS: ./weights/model.safetensors
 ```
 
 ## Console Contract
@@ -83,7 +83,7 @@ The console output must still cover:
   - mismatch cause such as Python range, framework version, or PTA build suffix
   - whether a replacement was offered and whether the user confirmed it
 - runtime dependency and install results
-  - direct `pip install` remediation inside the selected `uv` environment
+  - direct `uv pip install --python ...` remediation inside the selected `uv` environment
   - `transformers`
   - `tokenizers`
   - `datasets`

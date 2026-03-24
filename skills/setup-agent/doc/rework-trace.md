@@ -902,9 +902,95 @@ Files changed:
      - Added this entry so the MindSpore compatibility policy and table change
        remains reconstructable without relying on commit history alone
 
+### 2026-03-24 - Driver and firmware matrix expanded through CANN 8.5.0
+
+Trigger:
+- The system-layer matrix needed to cover the newer CANN lines already used by
+  the MindSpore and PTA compatibility sections.
+- The requested scope for the system-layer matrix was `8.0.RC1` through
+  `8.5.0`, rather than stopping at `8.1.RC1`.
+
+Files changed:
+
+1. `skills/setup-agent/references/ascend-compat.md`
+   - Description: Compatibility lookup and repair policy
+   - Change:
+     - Added `8.2.RC1`, `8.3.RC1`, and `8.5.0` rows to the
+       `Driver / Firmware / CANN Matrix`
+     - For newer 25.x lines, documented firmware requirements as "use the
+       firmware from the paired Ascend HDK release" because the public source
+       is published as an HDK pairing rather than one central firmware minimum
+       table
+     - Added official verification links for the newer CANN and HDK pairing
+       sources
+
+2. `skills/setup-agent/tests/test_references.py`
+   - Description: Behavior-contract tests for the skill prompt and references
+   - Change:
+     - Added a regression test that the system-layer matrix now covers
+       `8.0.RC1` through `8.5.0`
+
+3. `skills/setup-agent/doc/rework-trace.md`
+   - Description: Long-lived trace for the skill's rework history
+   - Change:
+     - Added this matrix-expansion entry
+
+### 2026-03-24 - Legacy system-layer rows removed and uv-scoped command contract tightened
+
+Trigger:
+- The system-layer matrix should now stop at `8.0.RC1` on the low end rather
+  than continuing to legacy `7.3.0` and `7.1.0` CANN rows.
+- The execution examples still used bare `python` and `pip install`, which was
+  inconsistent with the skill rule that Python work must stay inside the
+  user-confirmed `uv` environment.
+- The execution-contract examples still used lowercase `passed` and `failed`
+  even though the allowed status set was uppercase `PASS` / `FAIL` / `WARN` /
+  `SKIP` / `INFO`.
+
+Files changed:
+
+1. `skills/setup-agent/references/ascend-compat.md`
+   - Description: Compatibility lookup and repair policy
+   - Change:
+     - Removed legacy `7.3.0` and `7.1.0` rows from the
+       `Driver / Firmware / CANN Matrix`
+     - Kept the matrix floor at `8.0.RC1` while preserving coverage through
+       `8.5.0`
+
+2. `skills/setup-agent/SKILL.md`
+   - Description: Main execution prompt used by the model
+   - Change:
+     - Replaced bare `python` framework-check examples with
+       `uv run --python <selected_python> python ...`
+     - Replaced the bare PTA helper invocation with a `uv run`-scoped form
+
+3. `skills/setup-agent/references/framework-remediation.md`
+   - Description: Framework-layer execution reference
+   - Change:
+     - Replaced bare `python` examples with `uv run --python <selected_python>`
+     - Replaced bare `pip install` examples with
+       `uv pip install --python <selected_python> ...`
+     - Kept remediation explicitly tied to the selected `uv` interpreter
+
+4. `skills/setup-agent/references/execution-contract.md`
+   - Description: Runtime UX and reporting contract
+   - Change:
+     - Updated streaming examples to use uppercase status values such as
+       `PASS` and `FAIL`
+     - Updated runtime install reporting to describe
+       `uv pip install --python ...` remediation rather than bare `pip install`
+
+5. `skills/setup-agent/tests/test_references.py`
+   - Description: Behavior-contract tests for the skill prompt and references
+   - Change:
+     - Added regression checks that the matrix no longer includes
+       `7.3.0` or `7.1.0`
+     - Added regression checks for `uv`-scoped command examples
+     - Added regression checks for uppercase streaming status examples
+
 ## Latest Validation Snapshot
 
-Validation performed after the latest 2026-03-24 MindSpore compatibility
+Validation performed after the latest 2026-03-24 setup-agent consistency
 update:
 
 ```bash
@@ -913,7 +999,7 @@ pytest -q skills/setup-agent/tests/test_manifest_contract.py
 ```
 
 Result:
-- `49 passed` in `skills/setup-agent/tests/test_references.py`
+- `54 passed` in `skills/setup-agent/tests/test_references.py`
 - `1 passed` in `skills/setup-agent/tests/test_manifest_contract.py`
 
 ## Practical Guidance For Future Editors

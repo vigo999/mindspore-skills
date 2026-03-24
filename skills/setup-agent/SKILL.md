@@ -195,8 +195,8 @@ uv run --python .venv/bin/python python -c "print('ok')"
 Only after entering the selected `uv` environment, check Python-related facts:
 
 ```bash
-python -V
-python -c "import sys; print(sys.executable)"
+uv run --python .venv/bin/python python -V
+uv run --python .venv/bin/python python -c "import sys; print(sys.executable)"
 ```
 
 Do not check or report Python runtime readiness before the NPU-related system
@@ -234,8 +234,8 @@ Use this order:
 Run:
 
 ```bash
-python -c "import mindspore as ms; print(ms.__version__)" 2>/dev/null
-python -c "import mindspore as ms; ms.set_context(device_target='Ascend'); print('mindspore_ascend_ok')" 2>/dev/null
+uv run --python <selected_python> python -c "import mindspore as ms; print(ms.__version__)" 2>/dev/null
+uv run --python <selected_python> python -c "import mindspore as ms; ms.set_context(device_target='Ascend'); print('mindspore_ascend_ok')" 2>/dev/null
 ```
 
 Then follow `references/framework-remediation.md`:
@@ -271,7 +271,7 @@ Then follow `references/framework-remediation.md`:
 Use the bundled helper when deterministic PTA lookup is needed:
 
 ```bash
-python scripts/pta_compat_lookup.py --cann <detected_cann> --torch <installed_or_target_torch> --torch-npu <installed_or_target_torch_npu> --python <python_version> --remote-fallback
+uv run --python <selected_python> python scripts/pta_compat_lookup.py --cann <detected_cann> --torch <installed_or_target_torch> --torch-npu <installed_or_target_torch_npu> --python <python_version> --remote-fallback
 ```
 
 If both framework paths are unhealthy, report both independently.
