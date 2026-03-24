@@ -24,7 +24,7 @@ ready to run, for example:
 - "preflight"
 - "workspace readiness"
 - "can this repo train"
-- "检查训练环境"
+- "check training environment"
 
 Do not use this skill for:
 

@@ -1,0 +1,35 @@
+name: "algorithm-agent"
+display_name: "Algorithm Agent"
+description: "Adapt a paper feature, released reference implementation, or user-described algorithm change into an existing model codebase, generate the minimal patch, and hand the updated workspace to readiness validation."
+entry:
+  type: manual
+inputs:
+  - name: source_text
+    type: string
+    required: false
+    description: Paper excerpt, user request, or feature description.
+  - name: reference_code_path
+    type: string
+    required: false
+    description: Optional released-code path or local reference implementation.
+  - name: target_workspace
+    type: string
+    required: false
+    description: Local codebase to adapt.
+  - name: target_model
+    type: string
+    required: false
+    description: Target model or baseline name when already known.
+outputs:
+  - name: feature_spec
+    type: object
+    description: Structured feature analysis result.
+  - name: integration_plan
+    type: object
+    description: Planned integration points and patch scope.
+  - name: patch_summary
+    type: object
+    description: Summary of generated code and config changes.
+  - name: readiness_handoff
+    type: object
+    description: Suggested readiness validation handoff.

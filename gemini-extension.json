@@ -24,6 +24,11 @@
                        "path":  "skills/readiness-agent/SKILL.md"
                    },
                    {
+                       "name":  "algorithm-agent",
+                       "description":  "Adapt a paper feature or released reference implementation into an existing model codebase and prepare the patch for readiness validation",
+                       "path":  "skills/algorithm-agent/SKILL.md"
+                   },
+                   {
                        "name":  "accuracy-agent",
                        "description":  "Diagnose accuracy regressions, drift, wrong results, and cross-platform mismatch after successful execution",
                        "path":  "skills/accuracy-agent/SKILL.md"

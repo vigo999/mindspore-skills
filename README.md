@@ -24,6 +24,7 @@ Then use slash command:
 /mscode:operator-agent
 /mscode:readiness-agent
 /mscode:accuracy-agent
+/mscode:algorithm-agent
 /mscode:performance-agent
 ```
 
@@ -104,6 +105,7 @@ See [Codex AGENTS guide](https://developers.openai.com/codex/guides/agents-md) f
 | Skill | Description |
 |-------|-------------|
 | `accuracy-agent` | Diagnose accuracy regressions, drift, wrong results, and cross-platform mismatch after successful execution |
+| `algorithm-agent` | Adapt a paper feature or released reference implementation into an existing model codebase and prepare the patch for readiness validation |
 | `readiness-agent` | Analyze a local single-machine training workspace and validate pre-run readiness before training |
 | `failure-agent` | Diagnose MindSpore and PTA (torch_npu) training and runtime failures with evidence-backed root-cause validation |
 | `performance-agent` | Diagnose throughput, latency, memory, utilization, dataloader, and communication bottlenecks after the workload already runs |
@@ -129,6 +131,7 @@ See [Codex AGENTS guide](https://developers.openai.com/codex/guides/agents-md) f
 | Command | Description |
 |---------|-------------|
 | `/accuracy-agent` | Accuracy diagnosis workflow after successful execution |
+| `/algorithm-agent` | Algorithm feature adaptation workflow with patch generation and readiness handoff |
 | `/readiness-agent` | Single-machine training workspace readiness workflow |
 | `/failure-agent` | Dual-stack failure diagnosis workflow with evidence, root-cause validation, and report output |
 | `/performance-agent` | Performance diagnosis workflow with bottleneck validation and report output |
@@ -153,6 +156,8 @@ See expected result contract in `examples/cpu/plugin_add/expected.md`.
 
 ## Contract and Tests
 
+- Architecture overview:
+  - `docs/concepts/agent-architecture-overview.md`
 - Contract docs:
   - `docs/concepts/skills-contract.md`
   - `docs/concepts/artifacts-and-reporting.md`
@@ -173,6 +178,7 @@ mindspore-skills/
 │   ├── operator-agent/      # Framework operator implementation
 │   ├── readiness-agent/     # Training workspace readiness and preflight
 │   ├── accuracy-agent/      # Accuracy diagnosis after successful execution
+│   ├── algorithm-agent/     # Feature adaptation and patch planning for existing models
 │   ├── failure-agent/       # Training and runtime failure diagnosis
 │   └── performance-agent/   # Performance diagnosis after the workload already runs
 ├── AGENTS.md                # Codex instructions

@@ -8,9 +8,9 @@ documentation for MindSpore output layout, and the `torch_npu` output is
 treated as layout-compatible for the same analysis flow:
 
 - MindSpore profiler output structure:
-  [官方文档](https://www.hiascend.com/document/detail/zh/mindstudio/81RC1/msquickstart/atlasquick_train_0017.html?framework=mindspore)
+  [official documentation](https://www.hiascend.com/document/detail/zh/mindstudio/81RC1/msquickstart/atlasquick_train_0017.html?framework=mindspore)
 - `torch_npu` collection guide:
-  [官方文档](https://www.hiascend.com/document/detail/zh/mindstudio/81RC1/msquickstart/atlasquick_train_0018.html?framework=mindspore)
+  [official documentation](https://www.hiascend.com/document/detail/zh/mindstudio/81RC1/msquickstart/atlasquick_train_0018.html?framework=mindspore)
 
 ## Goal
 
