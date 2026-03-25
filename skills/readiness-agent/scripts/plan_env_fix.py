@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import re
 from pathlib import Path
+from typing import List, Tuple
+
+
+PACKAGE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 def build_action(
@@ -12,7 +17,7 @@ def build_action(
     requires_confirmation: bool,
     allowed: bool,
     reason: str,
-    revalidation_scope: list[str],
+    revalidation_scope: List[str],
     **extra: object,
 ) -> dict:
     payload = {
@@ -30,7 +35,7 @@ def build_action(
     return payload
 
 
-def infer_framework_action(summary: str, closure: dict) -> tuple[str, str]:
+def infer_framework_action(summary: str, closure: dict) -> Tuple[str, str]:
     text = summary.lower()
     framework_path = closure.get("layers", {}).get("framework", {}).get("framework_path", "unknown")
     if "mindspore" in text or framework_path == "mindspore":
@@ -40,9 +45,16 @@ def infer_framework_action(summary: str, closure: dict) -> tuple[str, str]:
     return "repair_framework", "Framework path requires repair inside the selected environment."
 
 
-def package_hints(blocker: dict, closure: dict, *, framework_fallback: bool = False) -> list[str]:
+def package_hints(blocker: dict, closure: dict, *, framework_fallback: bool = False) -> List[str]:
     evidence = blocker.get("evidence") or []
-    packages = [item for item in evidence if isinstance(item, str) and item]
+    packages = [
+        item
+        for item in evidence
+        if isinstance(item, str)
+        and item
+        and "=" not in item
+        and bool(PACKAGE_NAME_PATTERN.match(item))
+    ]
     if packages:
         return packages
     if framework_fallback:
@@ -50,9 +62,9 @@ def package_hints(blocker: dict, closure: dict, *, framework_fallback: bool = Fa
     return []
 
 
-def plan_actions(blockers: list[dict], closure: dict, allow_network: bool, fix_scope: str) -> dict:
-    actions: list[dict] = []
-    skipped: list[dict] = []
+def plan_actions(blockers: List[dict], closure: dict, allow_network: bool, fix_scope: str) -> dict:
+    actions: List[dict] = []
+    skipped: List[dict] = []
 
     for index, blocker in enumerate(blockers, 1):
         category = blocker.get("category")
@@ -71,7 +83,8 @@ def plan_actions(blockers: list[dict], closure: dict, allow_network: bool, fix_s
         lower = summary.lower()
 
         if category == "env_remediable":
-            if "uv" in lower and ("missing" in lower or "not" in lower):
+            blocker_id = str(blocker.get("id") or "")
+            if blocker_id == "python-uv" or ("uv" in lower and ("missing" in lower or "not" in lower)):
                 actions.append(
                     build_action(
                         f"action-{index}",
@@ -97,7 +110,7 @@ def plan_actions(blockers: list[dict], closure: dict, allow_network: bool, fix_s
                         revalidation_scope or ["tool-resolution"],
                     )
                 )
-            elif "environment" in lower or "env" in lower:
+            elif blocker_id == "python-selected-python" or "selected python" in lower or "environment" in lower or "env" in lower:
                 actions.append(
                     build_action(
                         f"action-{index}",

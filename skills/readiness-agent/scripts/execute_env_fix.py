@@ -6,6 +6,8 @@ import subprocess
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from python_selection import derive_env_root_from_python, python_in_env
+
 
 UV_INSTALL_CMD = "curl -LsSf https://astral.sh/uv/install.sh | sh"
 UV_BIN_DIR = "$HOME/.local/bin"
@@ -41,7 +43,25 @@ def ensure_uv_env(selected_env_root: Path, python_version: Optional[str]) -> Tup
 
 
 def selected_python_path(env_root: Path) -> Path:
+    python_path = python_in_env(env_root)
+    if python_path:
+        return python_path
     return env_root / "bin" / "python"
+
+
+def resolve_env_root(args: argparse.Namespace) -> Optional[Path]:
+    if args.selected_env_root:
+        return Path(args.selected_env_root)
+
+    if args.selected_python:
+        derived = derive_env_root_from_python(Path(args.selected_python))
+        if derived:
+            return derived
+
+    if args.working_dir:
+        return Path(args.working_dir).resolve() / ".venv"
+
+    return None
 
 
 def install_runtime_dependency(env_root: Path, package_name: str) -> Tuple[bool, str]:
@@ -130,7 +150,7 @@ def execute_action(action: dict, args: argparse.Namespace) -> dict:
         return result
 
     if action_type == "create_or_select_env":
-        env_root = Path(args.selected_env_root) if args.selected_env_root else None
+        env_root = resolve_env_root(args)
         result["command_preview"] = "uv venv <selected_env_root> [--python <python_version>]"
         if not args.execute:
             return result
@@ -152,7 +172,7 @@ def execute_action(action: dict, args: argparse.Namespace) -> dict:
         return result
 
     if action_type == "install_runtime_dependency":
-        env_root = Path(args.selected_env_root) if args.selected_env_root else None
+        env_root = resolve_env_root(args)
         package_names = action.get("package_names") or []
         if not package_names and action.get("package_name"):
             package_names = [action["package_name"]]
@@ -173,7 +193,7 @@ def execute_action(action: dict, args: argparse.Namespace) -> dict:
         return result
 
     if action_type in {"repair_mindspore_framework", "repair_pta_framework", "repair_framework"}:
-        env_root = Path(args.selected_env_root) if args.selected_env_root else None
+        env_root = resolve_env_root(args)
         package_names = action.get("package_names") or []
         if not package_names and action.get("package_name"):
             package_names = [action["package_name"]]
@@ -207,7 +227,9 @@ def main() -> int:
     parser.add_argument("--plan-json", required=True, help="path to remediation plan JSON")
     parser.add_argument("--output-json", required=True, help="path to output execution result JSON")
     parser.add_argument("--execute", action="store_true", help="execute actions instead of dry-run planning")
+    parser.add_argument("--working-dir", help="workspace root for default environment creation")
     parser.add_argument("--selected-env-root", help="selected environment root for env actions")
+    parser.add_argument("--selected-python", help="selected Python interpreter for env-root derivation")
     parser.add_argument("--python-version", help="python version for environment creation")
     parser.add_argument("--path-profile", help="shell profile path for PATH repair")
     parser.add_argument("--confirm-install-uv", action="store_true", help="confirm uv installation")

@@ -10,8 +10,10 @@ Current state:
 - recent P0 Python hardening materially improves real server robustness
 - helper scripts now target Python 3.9 compatibility and the skill now has an
   explicit selected-workspace-Python contract
+- a top-level orchestrator now closes the default no-env -> env-fix -> rerun
+  path for workspace-local environments
 - full confidence still requires a full pytest rerun in an environment with
-  `pytest` installed, plus one more pass on end-to-end fix-mode closure
+  `pytest` installed and broader real-server regression coverage
 
 Recommended readiness level:
 
@@ -35,6 +37,9 @@ Recommended readiness level:
   instead of silently trusting the host interpreter
 - helper scripts have been moved away from Python 3.10-only type syntax so the
   control plane is compatible with Python 3.9+
+- `run_readiness_pipeline.py` now provides the missing top-level orchestration
+  for `mode=check/fix/auto`, env-fix execution, and one-shot full-pipeline
+  re-entry
 - explicit task smoke is supported through `task_smoke_cmd`
 - blocker taxonomy is normalized and stable
 - native `env_fix` planning and controlled execution exist
@@ -46,16 +51,17 @@ Recommended readiness level:
 
 ## Current Implemented Pipeline
 
-1. `resolve_selected_python.py`
-2. `discover_execution_target.py`
-3. `build_dependency_closure.py`
-4. `run_task_smoke.py` when `task_smoke_cmd` exists
-5. `collect_readiness_checks.py`
-6. `normalize_blockers.py`
-7. `plan_env_fix.py`
-8. `execute_env_fix.py`
-9. rerun required checks when remediation changes the environment
-10. `build_readiness_report.py`
+1. `run_readiness_pipeline.py`
+2. `resolve_selected_python.py`
+3. `discover_execution_target.py`
+4. `build_dependency_closure.py`
+5. `run_task_smoke.py` when `task_smoke_cmd` exists
+6. `collect_readiness_checks.py`
+7. `normalize_blockers.py`
+8. `plan_env_fix.py`
+9. `execute_env_fix.py`
+10. rerun required checks when remediation changes the environment
+11. `build_readiness_report.py`
 
 ## Recent P0 Python Hardening
 
@@ -70,6 +76,11 @@ Recommended readiness level:
   environment blockers
 - helper scripts now use Python 3.9-compatible typing forms instead of
   Python 3.10-only `X | None` syntax
+- env-fix execution can now default environment creation to
+  `<working_dir>/.venv` and rerun the full helper sequence after a successful
+  mutation
+- env-fix package planning now filters probe metadata out of package-name hints
+  so framework/runtime repair commands stay syntactically valid
 
 ## Evidence Of Stability
 
@@ -81,28 +92,16 @@ Recommended readiness level:
 - the `discover_execution_target -> build_dependency_closure ->
   collect_readiness_checks` path was manually validated with the new
   selected-Python contract
+- `run_readiness_pipeline.py` was manually validated with a fake `uv` tool to
+  confirm the `.venv` creation path, two-pass pipeline re-entry, and final
+  `python-selected-python=ok` outcome
 - full pytest rerun is still pending in this workspace because the local
   Python environment used for development does not currently have `pytest`
   installed
 
 ## Remaining Product Gaps
 
-### 1. Automatic No-Env-To-Ready Closure Is Not Fully Closed Yet
-
-The skill now knows how to resolve a selected workspace Python, but the full
-automatic path from:
-
-- no usable workspace virtual environment
-- selected-Python blocker
-- `env_fix` creates or repairs the environment
-- downstream stages re-enter using the newly created interpreter
-
-is not yet closed by a single top-level driver in this repo.
-
-The contract is now much clearer, but the repair-and-reenter loop still needs
-explicit orchestration closure.
-
-### 2. Real Framework Smoke Is Still Minimal
+### 1. Real Framework Smoke Is Still Minimal
 
 Current framework smoke verifies the minimum import/bootstrap prerequisite,
 not a real task-level framework execution path such as:
@@ -114,7 +113,7 @@ not a real task-level framework execution path such as:
 This is acceptable for now, but stronger task evidence would reduce false
 `READY` in edge cases where import succeeds but runtime usage still fails.
 
-### 3. `env_fix` Capability Is Still Narrow By Design
+### 2. `env_fix` Capability Is Still Narrow By Design
 
 The current native remediation scope is intentionally limited to safe
 user-space actions. This is correct for product safety, but it means:
@@ -127,7 +126,7 @@ user-space actions. This is correct for product safety, but it means:
 
 This is not a flaw, but it should remain explicit in integration plans.
 
-### 4. No Formal `ms-cli` Adapter Contract Yet
+### 3. No Formal `ms-cli` Adapter Contract Yet
 
 The skill now has a clearer internal Python contract and stable artifacts, but
 the adapter layer that maps:
@@ -143,19 +142,18 @@ into `ms-cli` runtime behavior is not yet formalized in this repo.
 
 ## Recommended Final Steps
 
-1. Close selected-Python orchestration and repair loop.
-   Define:
-   - when `resolve_selected_python.py` must run
-   - how `selected_python` and `selected_env_root` flow into downstream helpers
-   - how `fix` / `auto` mode creates an environment and reruns the pipeline
-     with the new interpreter
-
-2. Rerun and expand the test matrix.
+1. Rerun and expand the test matrix.
    Add:
    - a full pytest rerun in an environment that has `pytest`
    - a regression case for host Python 3.9 plus workspace `.venv` Python 3.10
    - a regression case for workspace Python 3.9 selected successfully
    - a regression case for missing `.venv` followed by `env_fix` recovery
+
+2. Validate the orchestrator on real server matrices.
+   Add:
+   - one PTA/Ascend workspace with no initial `.venv` and `uv` available
+   - one workspace with an existing `.venv` that should be selected directly
+   - one workspace where `uv` is missing and the blocker path must remain clear
 
 3. Optionally strengthen runtime evidence.
    Add one more controlled smoke tier for frameworks or task kinds where
@@ -168,6 +166,6 @@ It now behaves like a real certification product with deterministic helpers,
 native remediation, revalidation, stable artifacts, realistic fixtures, and a
 much clearer Python control-plane story.
 
-The biggest remaining work is no longer basic Python survivability. It is
-closing the automatic repair-and-reenter loop and strengthening real runtime
-evidence.
+The biggest remaining work is no longer basic Python survivability or
+top-level repair orchestration. It is strengthening real runtime evidence and
+validating the current closure on broader real-server matrices.

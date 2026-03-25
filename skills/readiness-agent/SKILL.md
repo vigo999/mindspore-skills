@@ -28,6 +28,9 @@ Load these references when needed:
 
 Use these helper scripts when needed:
 
+- `scripts/run_readiness_pipeline.py` for the full deterministic readiness
+  pipeline, including env-fix execution and one-shot re-entry after
+  environment creation or repair
 - `scripts/resolve_selected_python.py` for selecting the single workspace
   Python interpreter that should drive helper execution and target validation
 - `scripts/discover_execution_target.py` for initial execution-target discovery
@@ -131,16 +134,18 @@ Do not skip directly to certification or report generation.
 
 Recommended helper order for the current deterministic pipeline:
 
-1. `scripts/resolve_selected_python.py`
-2. `scripts/discover_execution_target.py`
-3. `scripts/build_dependency_closure.py`
-4. `scripts/run_task_smoke.py` when `task_smoke_cmd` is available
-5. `scripts/collect_readiness_checks.py`
-6. `scripts/normalize_blockers.py`
-7. `scripts/plan_env_fix.py`
-8. `scripts/execute_env_fix.py`
-9. rerun affected checks when `needs_revalidation` is non-empty
-10. `scripts/build_readiness_report.py`
+1. `scripts/run_readiness_pipeline.py` when a full end-to-end readiness pass is
+   needed
+2. `scripts/resolve_selected_python.py`
+3. `scripts/discover_execution_target.py`
+4. `scripts/build_dependency_closure.py`
+5. `scripts/run_task_smoke.py` when `task_smoke_cmd` is available
+6. `scripts/collect_readiness_checks.py`
+7. `scripts/normalize_blockers.py`
+8. `scripts/plan_env_fix.py`
+9. `scripts/execute_env_fix.py`
+10. rerun affected checks when `needs_revalidation` is non-empty
+11. `scripts/build_readiness_report.py`
 
 ## Stage 0. Selected-Python Resolution
 
@@ -161,6 +166,9 @@ If no selected workspace Python is available:
 - do not silently trust system Python as if it represented the target
 - classify the issue as an environment problem, or repair the selected
   environment first when the workflow allows it
+- in `fix` or `auto` mode, prefer creating or repairing a workspace-local
+  environment such as `.venv`, then rerun the full helper pipeline once with
+  the newly selected interpreter
 
 ## Stage 1. Execution-Target Discovery
 

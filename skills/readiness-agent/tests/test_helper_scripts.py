@@ -387,6 +387,61 @@ def test_collect_readiness_checks_flags_missing_framework_packages(tmp_path: Pat
     by_id = {item["id"]: item for item in checks}
     assert by_id["framework-importability"]["status"] == "block"
     assert by_id["framework-importability"]["category_hint"] == "framework"
+
+
+def test_plan_env_fix_filters_non_package_framework_evidence(tmp_path: Path):
+    blockers_path = tmp_path / "blockers.json"
+    closure_path = tmp_path / "closure.json"
+    output = tmp_path / "plan.json"
+
+    blockers_path.write_text(
+        json.dumps(
+            {
+                "blockers_detailed": [
+                    {
+                        "id": "framework-importability",
+                        "category": "framework_remediable",
+                        "summary": "Required framework packages are unavailable in the selected Python interpreter: torch, torch_npu.",
+                        "evidence": [
+                            "probe_source=workspace_env",
+                            "torch",
+                            "torch_npu",
+                            "probe_error=probe python path is unavailable",
+                        ],
+                        "remediable": True,
+                        "revalidation_scope": ["framework", "task-smoke"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    closure_path.write_text(
+        json.dumps(
+            {
+                "layers": {
+                    "framework": {
+                        "framework_path": "pta",
+                        "required_packages": ["torch", "torch_npu"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    run_script(
+        "plan_env_fix.py",
+        "--blockers-json",
+        str(blockers_path),
+        "--closure-json",
+        str(closure_path),
+        "--output-json",
+        str(output),
+    )
+    plan = json.loads(output.read_text(encoding="utf-8"))
+    assert plan["actions"][0]["action_type"] == "repair_pta_framework"
+    assert plan["actions"][0]["package_names"] == ["torch", "torch_npu"]
     assert "mindspore" in by_id["framework-importability"]["summary"]
 
 
