@@ -20,6 +20,10 @@ RUNTIME_IMPORT_CANDIDATES = {
     "accelerate",
     "safetensors",
     "diffusers",
+    "peft",
+    "trl",
+    "evaluate",
+    "sentencepiece",
 }
 
 ASCEND_HIDDEN_RUNTIME_DEPENDENCIES = [
@@ -43,6 +47,15 @@ ASCEND_HIDDEN_RUNTIME_DEPENDENCIES = [
         "framework_paths": ["mindspore", "pta", "mixed"],
         "required_for": "ascend-compiler",
         "reason": "Ascend compiler adapters import attr from the attrs package during TBE or AOE initialization.",
+    },
+]
+
+TRANSFORMERS_COMMON_RUNTIME_DEPENDENCIES = [
+    {
+        "import_name": "accelerate",
+        "package_name": "accelerate",
+        "required_for": "transformers-runtime",
+        "reason": "Complete Transformers engineering workflows commonly rely on Accelerate for loading, placement, and training orchestration.",
     },
 ]
 
@@ -106,6 +119,26 @@ def extract_runtime_imports(entry_script: Optional[Path]) -> List[str]:
         if f"import {name}" in text or f"from {name}" in text:
             found.append(name)
     return found
+
+
+def transformers_common_runtime_profile(
+    entry_script: Optional[Path],
+    explicit_imports: List[str],
+) -> List[dict]:
+    if not entry_script or not entry_script.exists():
+        return []
+    if "transformers" not in explicit_imports:
+        return []
+
+    return [
+        {
+            "import_name": item["import_name"],
+            "package_name": item["package_name"],
+            "required_for": item["required_for"],
+            "reason": item["reason"],
+        }
+        for item in TRANSFORMERS_COMMON_RUNTIME_DEPENDENCIES
+    ]
 
 
 def ascend_hidden_runtime_profile(framework_path: str, system_layer: dict) -> List[dict]:
@@ -326,7 +359,11 @@ def build_runtime_layer(
     probe_env: Optional[Dict[str, str]] = None,
 ) -> dict:
     explicit_imports = extract_runtime_imports(entry_script)
-    implicit_profile = ascend_hidden_runtime_profile(framework_path, system_layer)
+    implicit_profile = list(ascend_hidden_runtime_profile(framework_path, system_layer))
+    for item in transformers_common_runtime_profile(entry_script, explicit_imports):
+        import_name = str(item.get("import_name") or "").strip()
+        if import_name and all(existing.get("import_name") != import_name for existing in implicit_profile):
+            implicit_profile.append(item)
     required_imports: List[str] = list(explicit_imports)
     for item in implicit_profile:
         import_name = str(item.get("import_name") or "").strip()

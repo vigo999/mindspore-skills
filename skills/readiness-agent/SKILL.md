@@ -185,6 +185,11 @@ For Ascend-backed `mindspore`, `pta`, and `mixed` paths, dependency closure
 should also account for known hidden Python-side compiler dependencies such as
 `decorator`, `scipy`, and `attrs`, so env-fix can install them in one pass
 instead of discovering them one module at a time during runtime.
+For complete training and inference engineering workspaces, treat
+`transformers` as carrying a default `accelerate` companion dependency so
+readiness can remediate it before task execution. Also probe common explicit
+ecosystem imports such as `peft`, `trl`, `evaluate`, and `sentencepiece` when
+workspace code imports them directly.
 
 ## Stage 1. Execution-Target Discovery
 

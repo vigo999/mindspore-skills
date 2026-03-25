@@ -299,6 +299,105 @@ def test_build_dependency_closure_adds_ascend_hidden_runtime_profile_for_mindspo
     assert any(item["package_name"] == "attrs" for item in implicit_profile)
 
 
+def test_build_dependency_closure_adds_accelerate_for_transformers_runtime(tmp_path: Path):
+    (tmp_path / "infer.py").write_text(
+        "\n".join(
+            [
+                "import torch",
+                "import torch_npu",
+                "from transformers import AutoModelForCausalLM",
+                "model = AutoModelForCausalLM.from_pretrained('demo')",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "model").mkdir()
+    target_path = tmp_path / "target.json"
+    closure_path = tmp_path / "closure.json"
+    target_path.write_text(
+        json.dumps(
+            {
+                "working_dir": str(tmp_path),
+                "target_type": "inference",
+                "entry_script": "infer.py",
+                "framework_path": "pta",
+                "selected_python": sys.executable,
+                "model_path": "model",
+                "launch_cmd": "python infer.py",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    run_script(
+        "build_dependency_closure.py",
+        "--target-json",
+        str(target_path),
+        "--output-json",
+        str(closure_path),
+    )
+    closure = json.loads(closure_path.read_text(encoding="utf-8"))
+    runtime_layer = closure["layers"]["runtime_dependencies"]
+    required_imports = runtime_layer["required_imports"]
+    implicit_profile = runtime_layer["implicit_dependency_profile"]
+
+    assert "transformers" in required_imports
+    assert "accelerate" in required_imports
+    assert any(item["package_name"] == "accelerate" for item in implicit_profile)
+
+
+def test_build_dependency_closure_collects_common_training_and_inference_import_candidates(tmp_path: Path):
+    (tmp_path / "infer.py").write_text(
+        "\n".join(
+            [
+                "import torch",
+                "import torch_npu",
+                "from transformers import AutoTokenizer",
+                "import peft",
+                "import trl",
+                "import evaluate",
+                "import sentencepiece",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "model").mkdir()
+    target_path = tmp_path / "target.json"
+    closure_path = tmp_path / "closure.json"
+    target_path.write_text(
+        json.dumps(
+            {
+                "working_dir": str(tmp_path),
+                "target_type": "inference",
+                "entry_script": "infer.py",
+                "framework_path": "pta",
+                "selected_python": sys.executable,
+                "model_path": "model",
+                "launch_cmd": "python infer.py",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    run_script(
+        "build_dependency_closure.py",
+        "--target-json",
+        str(target_path),
+        "--output-json",
+        str(closure_path),
+    )
+    closure = json.loads(closure_path.read_text(encoding="utf-8"))
+    runtime_layer = closure["layers"]["runtime_dependencies"]
+    required_imports = runtime_layer["required_imports"]
+
+    assert "transformers" in required_imports
+    assert "accelerate" in required_imports
+    assert "peft" in required_imports
+    assert "trl" in required_imports
+    assert "evaluate" in required_imports
+    assert "sentencepiece" in required_imports
+
+
 def test_build_dependency_closure_prefers_selected_env_probe_python(tmp_path: Path):
     (tmp_path / "infer.py").write_text(
         "import torch\nimport torch_npu\nimport transformers\n",

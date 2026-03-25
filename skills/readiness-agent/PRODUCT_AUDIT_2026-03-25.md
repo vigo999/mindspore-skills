@@ -95,6 +95,9 @@ Recommended readiness level:
   hidden runtime dependency profile for compiler-side Python modules such as
   `decorator`, `scipy`, and `attrs`, allowing env-fix to remediate them in one
   pass instead of discovering them one at a time during later runtime
+- closure now models `accelerate` as a default companion dependency for
+  `transformers` workspaces, and it also probes high-frequency explicit
+  ecosystem imports such as `peft`, `trl`, `evaluate`, and `sentencepiece`
 
 ## Evidence Of Stability
 
