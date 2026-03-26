@@ -4,12 +4,43 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from python_selection import derive_env_root_from_python
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+VALUE_FLAGS = {
+    "--working-dir",
+    "--output-dir",
+    "--target",
+    "--framework-hint",
+    "--cann-path",
+    "--mode",
+    "--entry-script",
+    "--selected-python",
+    "--selected-env-root",
+    "--config-path",
+    "--model-path",
+    "--model-hub-id",
+    "--dataset-path",
+    "--dataset-hub-id",
+    "--dataset-split",
+    "--checkpoint-path",
+    "--task-smoke-cmd",
+    "--fix-scope",
+    "--python-version",
+    "--path-profile",
+    "--timeout-seconds",
+}
+BOOL_FLAGS = {
+    "--check",
+    "--fix",
+    "--auto",
+    "--allow-network",
+    "--verbose",
+}
+HELP_FLAGS = {"-h", "--help"}
 
 
 def maybe_add(arguments: List[str], flag: str, value: Optional[str]) -> None:
@@ -73,7 +104,84 @@ def build_paths(output_dir: Path) -> Dict[str, Path]:
     }
 
 
-def write_inputs_snapshot(args: argparse.Namespace, working_dir: Path, output_dir: Path, path: Path) -> None:
+def sanitize_cli_args(raw_args: List[str]) -> Tuple[List[str], List[dict]]:
+    sanitized: List[str] = []
+    ignored: List[dict] = []
+    index = 0
+
+    while index < len(raw_args):
+        token = raw_args[index]
+        if token in HELP_FLAGS:
+            sanitized.append(token)
+            index += 1
+            continue
+
+        if token.startswith("--"):
+            flag, has_inline_value, inline_value = token.partition("=")
+
+            if flag in BOOL_FLAGS:
+                sanitized.append(flag)
+                if has_inline_value:
+                    ignored.append(
+                        {
+                            "token": token,
+                            "reason": "bool_flag_inline_value_ignored",
+                        }
+                    )
+                index += 1
+                continue
+
+            if flag in VALUE_FLAGS:
+                if has_inline_value:
+                    if inline_value:
+                        sanitized.extend([flag, inline_value])
+                    else:
+                        ignored.append({"token": token, "reason": "missing_value"})
+                    index += 1
+                    continue
+
+                if index + 1 < len(raw_args) and not raw_args[index + 1].startswith("-"):
+                    sanitized.extend([flag, raw_args[index + 1]])
+                    index += 2
+                    continue
+
+                ignored.append({"token": token, "reason": "missing_value"})
+                index += 1
+                continue
+
+            ignored.append({"token": token, "reason": "unknown_flag"})
+            if not has_inline_value and index + 1 < len(raw_args) and not raw_args[index + 1].startswith("-"):
+                ignored.append({"token": raw_args[index + 1], "reason": "unknown_flag_value"})
+                index += 2
+                continue
+
+            index += 1
+            continue
+
+        if token.startswith("-"):
+            ignored.append({"token": token, "reason": "unknown_short_flag"})
+            if index + 1 < len(raw_args) and not raw_args[index + 1].startswith("-"):
+                ignored.append({"token": raw_args[index + 1], "reason": "unknown_short_flag_value"})
+                index += 2
+                continue
+
+            index += 1
+            continue
+
+        ignored.append({"token": token, "reason": "unsupported_positional_argument"})
+        index += 1
+
+    return sanitized, ignored
+
+
+def write_inputs_snapshot(
+    args: argparse.Namespace,
+    working_dir: Path,
+    output_dir: Path,
+    path: Path,
+    raw_cli_args: List[str],
+    ignored_cli_args: List[dict],
+) -> None:
     payload = {
         "working_dir": str(working_dir),
         "output_dir": str(output_dir),
@@ -81,6 +189,7 @@ def write_inputs_snapshot(args: argparse.Namespace, working_dir: Path, output_di
         "framework_hint": args.framework_hint,
         "cann_path": args.cann_path,
         "mode": args.mode,
+        "verbose": bool(getattr(args, "verbose", False)),
         "entry_script": args.entry_script,
         "selected_python": args.selected_python,
         "selected_env_root": args.selected_env_root,
@@ -97,6 +206,8 @@ def write_inputs_snapshot(args: argparse.Namespace, working_dir: Path, output_di
         "python_version": args.python_version,
         "timeout_seconds": args.timeout_seconds,
         "path_profile": args.path_profile,
+        "raw_cli_args": raw_cli_args,
+        "ignored_cli_args": ignored_cli_args,
     }
     write_json(path, payload)
 
@@ -392,9 +503,12 @@ def normalize_mode_args(parser: argparse.ArgumentParser, args: argparse.Namespac
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the full readiness-agent helper pipeline with optional env re-entry")
-    parser.add_argument("--working-dir", required=True, help="workspace root")
-    parser.add_argument("--output-dir", help="output directory for readiness artifacts (defaults to <working_dir>/out)")
+    parser = argparse.ArgumentParser(
+        description="Run the full readiness-agent helper pipeline with optional env re-entry",
+        allow_abbrev=False,
+    )
+    parser.add_argument("--working-dir", help="workspace root (defaults to the current shell path)")
+    parser.add_argument("--output-dir", help="output directory for readiness artifacts (defaults to <working_dir>/readiness-output)")
     parser.add_argument("--target", default="auto", help="training, inference, or auto")
     parser.add_argument("--framework-hint", help="explicit framework preference such as mindspore or pta")
     parser.add_argument("--cann-path", help="explicit CANN root or set_env.sh path")
@@ -402,6 +516,7 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="alias for --mode check")
     parser.add_argument("--fix", action="store_true", help="alias for --mode fix")
     parser.add_argument("--auto", action="store_true", help="alias for --mode auto")
+    parser.add_argument("--verbose", action="store_true", help="accepted for caller compatibility; currently no-op")
     parser.add_argument("--entry-script", help="explicit entry script path")
     parser.add_argument("--selected-python", help="explicit Python interpreter for the workspace")
     parser.add_argument("--selected-env-root", help="explicit environment root for the workspace")
@@ -418,14 +533,23 @@ def main() -> int:
     parser.add_argument("--python-version", help="Python version hint for environment creation")
     parser.add_argument("--path-profile", help="shell profile path for PATH repair")
     parser.add_argument("--timeout-seconds", type=int, default=10, help="timeout for explicit task smoke execution")
-    args = parser.parse_args()
+    raw_cli_args = sys.argv[1:]
+    sanitized_cli_args, ignored_cli_args = sanitize_cli_args(raw_cli_args)
+    args = parser.parse_args(sanitized_cli_args)
     args.mode = normalize_mode_args(parser, args)
 
-    working_dir = Path(args.working_dir).resolve()
-    output_dir = Path(args.output_dir).resolve() if args.output_dir else (working_dir / "out").resolve()
+    working_dir = Path(args.working_dir).resolve() if args.working_dir else Path.cwd().resolve()
+    output_dir = Path(args.output_dir).resolve() if args.output_dir else (working_dir / "readiness-output").resolve()
     paths = build_paths(output_dir)
     paths["meta_dir"].mkdir(parents=True, exist_ok=True)
-    write_inputs_snapshot(args, working_dir, output_dir, paths["inputs_json"])
+    write_inputs_snapshot(
+        args,
+        working_dir,
+        output_dir,
+        paths["inputs_json"],
+        raw_cli_args,
+        ignored_cli_args,
+    )
 
     initial_state = run_pipeline_pass(
         args,

@@ -160,6 +160,11 @@ manually chaining internal helper scripts. The top-level entrypoint accepts:
 - `--mode check|fix|auto`
 - compatibility aliases `--check`, `--fix`, and `--auto`
 
+Call the top-level entrypoint directly for the real workspace instead of
+probing helper usage with speculative flags first. Treat the current shell path
+as the default `working_dir`, and summarize only the structured readiness
+result instead of surfacing raw helper CLI usage errors to the user.
+
 ## Stage 0. Selected-Python Resolution
 
 Resolve the single workspace Python interpreter before the rest of the
@@ -363,20 +368,20 @@ At minimum, capture these user-facing fields:
 
 At minimum, capture these internal fields in artifacts:
 
-- `out/report.json`
-- `out/report.md`
-- `out/meta/execution-target.json`
-- `out/meta/dependency-closure.json`
-- `out/meta/task-smoke.json` when task smoke ran
-- `out/meta/blockers.json`
-- `out/meta/remediation.json`
-- `out/meta/checks.json`
+- `readiness-output/report.json`
+- `readiness-output/report.md`
+- `readiness-output/meta/execution-target.json`
+- `readiness-output/meta/dependency-closure.json`
+- `readiness-output/meta/task-smoke.json` when task smoke ran
+- `readiness-output/meta/blockers.json`
+- `readiness-output/meta/remediation.json`
+- `readiness-output/meta/checks.json`
 
-`out/report.json` should preserve:
+`readiness-output/report.json` should preserve:
 
 - the shared run envelope required by the shared report schema
 - a reference to `meta/readiness-verdict.json` in artifacts
-- the readiness business verdict in `out/meta/readiness-verdict.json`
+- the readiness business verdict in `readiness-output/meta/readiness-verdict.json`
 - the resolved `dependency_closure`
 - the structured `checks`
 - the executor result object in `fix_applied`

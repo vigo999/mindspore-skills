@@ -10,6 +10,11 @@ environment probes.
 Always load the `readiness-agent` skill first instead of starting with manual
 shell checks.
 
+Do not begin by probing helper CLI usage with guessed flags such as
+`--verbose` or incomplete argument lists. Invoke the top-level readiness
+pipeline once for the real workspace and present only the final structured
+result to the user.
+
 Load the `readiness-agent` skill and follow its readiness certification
 workflow for:
 

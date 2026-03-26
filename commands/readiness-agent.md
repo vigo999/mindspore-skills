@@ -24,6 +24,10 @@ workflow:
 5. optional safe user-space remediation and revalidation
 6. readiness report build
 
+Do not run exploratory `--help` or guessed-flag helper invocations before the
+real readiness pass. Call the top-level readiness pipeline for the actual
+workspace and report the structured verdict instead of raw CLI parser output.
+
 ## Typical Inputs
 
 - code folder or working directory

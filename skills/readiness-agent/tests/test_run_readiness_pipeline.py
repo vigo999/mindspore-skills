@@ -176,6 +176,40 @@ def test_run_readiness_pipeline_check_does_not_create_workspace_env(tmp_path: Pa
     assert not (workspace / ".venv").exists()
 
 
+def test_run_readiness_pipeline_tolerates_missing_and_unknown_cli_args(tmp_path: Path):
+    workspace = make_workspace(tmp_path)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPTS / "run_readiness_pipeline.py"),
+            "--check",
+            "--verbose",
+            "--unknown-flag",
+            "mystery",
+            "--model-path",
+        ],
+        cwd=str(workspace),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    summary = json.loads(completed.stdout)
+    inputs = json.loads((workspace / "readiness-output" / "meta" / "inputs.json").read_text(encoding="utf-8"))
+
+    assert completed.stderr == ""
+    assert summary["status"] == "BLOCKED"
+    assert Path(inputs["working_dir"]) == workspace.resolve()
+    assert inputs["verbose"] is True
+    assert inputs["raw_cli_args"] == ["--check", "--verbose", "--unknown-flag", "mystery", "--model-path"]
+    assert inputs["ignored_cli_args"] == [
+        {"token": "--unknown-flag", "reason": "unknown_flag"},
+        {"token": "mystery", "reason": "unknown_flag_value"},
+        {"token": "--model-path", "reason": "missing_value"},
+    ]
+
+
 def test_run_readiness_pipeline_records_framework_hint(tmp_path: Path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()

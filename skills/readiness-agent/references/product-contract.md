@@ -12,8 +12,8 @@ Use it whenever the skill:
 
 The report format is two-layer:
 
-- shared run envelope in `out/report.json`
-- readiness verdict payload in `out/meta/readiness-verdict.json`
+- shared run envelope in `readiness-output/report.json`
+- readiness verdict payload in `readiness-output/meta/readiness-verdict.json`
 
 ## Core Product Meaning
 
@@ -218,17 +218,17 @@ The skill must preserve these invariants:
 
 Recommended artifact outputs:
 
-- `out/report.json`
-- `out/report.md`
-- `out/meta/readiness-verdict.json`
-- `out/meta/execution-target.json`
-- `out/meta/checks.json`
-- `out/meta/blockers.json`
-- `out/meta/remediation.json`
+- `readiness-output/report.json`
+- `readiness-output/report.md`
+- `readiness-output/meta/readiness-verdict.json`
+- `readiness-output/meta/execution-target.json`
+- `readiness-output/meta/checks.json`
+- `readiness-output/meta/blockers.json`
+- `readiness-output/meta/remediation.json`
 
-`out/report.json` should satisfy the shared report schema.
+`readiness-output/report.json` should satisfy the shared report schema.
 
-`out/meta/readiness-verdict.json` should satisfy the readiness-agent verdict
+`readiness-output/meta/readiness-verdict.json` should satisfy the readiness-agent verdict
 schema and carry the fields defined in this document.
 
 The Markdown report should prioritize the user-visible layer and only include
