@@ -1,6 +1,6 @@
 ---
 name: operator-agent
-description: Build framework operators through one of two implementation methods: custom-access integration that avoids changing framework source, or native-framework integration that edits framework source, compiles it, and outputs a new wheel.
+description: "Build framework operators through one of two implementation methods: custom-access integration that avoids changing framework source, or native-framework integration that edits framework source, compiles it, and outputs a new wheel."
 ---
 
 # Operator Agent
