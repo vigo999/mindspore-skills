@@ -5,8 +5,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorForLan
 from transformers import Trainer, TrainingArguments
 
 
+# This bundled example consumes the local model and dataset snapshots that
+# readiness-agent materializes into the workspace during asset repair.
 WORKSPACE = Path(__file__).resolve().parents[2]
-ASSET_ROOT = WORKSPACE / ".readiness-assets"
+ASSET_ROOT = WORKSPACE / "workspace-assets"
 MODEL_PATH = ASSET_ROOT / "models" / "Qwen__Qwen3-0.6B"
 DATASET_PATH = ASSET_ROOT / "datasets" / "karthiksagarn__astro_horoscope"
 

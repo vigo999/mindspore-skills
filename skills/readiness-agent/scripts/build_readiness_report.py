@@ -9,6 +9,7 @@ from uuid import uuid4
 
 READY_LEVELS = {"runtime_smoke", "task_smoke"}
 AUTO_REMEDIABLE_CATEGORIES = {"env_remediable", "framework_remediable", "asset_remediable"}
+DEFAULT_PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
 
 
 def derive_evidence_level(checks: List[dict]) -> str:
@@ -265,7 +266,10 @@ def build_selected_environment_guidance(target: dict, dependency_closure: dict) 
     }
     if probe_python_path:
         guidance["verification_command"] = f"{probe_python_path} <script.py>"
-        guidance["install_command"] = f"uv pip install --python {probe_python_path} <package>"
+        guidance["install_command"] = (
+            f"uv pip install --python {probe_python_path} --index-url "
+            f"{DEFAULT_PIP_INDEX_URL} <package>"
+        )
     else:
         guidance["verification_command"] = None
         guidance["install_command"] = None

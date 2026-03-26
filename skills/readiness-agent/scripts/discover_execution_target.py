@@ -10,6 +10,7 @@ from python_selection import resolve_selected_python
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_ROOT = SCRIPT_DIR.parent
 EXAMPLES_DIR = SKILL_ROOT / "examples"
+WORKSPACE_ASSET_ROOT = "workspace-assets"
 
 TRAINING_SCRIPT_NAMES = {
     "train.py",
@@ -40,12 +41,12 @@ KNOWN_EXAMPLE_RECIPES = {
     ("training", "Qwen/Qwen3-0.6B"): {
         "recipe_id": "qwen3-0.6b-hf-training",
         "framework_path": "pta",
-        "entry_script": ".readiness-assets/examples/train_qwen3_0_6b_hf.py",
-        "template_path": str(EXAMPLES_DIR / "qwen3_0_6b_training_local_assets.py"),
+        "entry_script": f"{WORKSPACE_ASSET_ROOT}/examples/train_qwen3_0_6b.py",
+        "template_path": str(EXAMPLES_DIR / "qwen3_0_6b_training_example.py"),
         "model_hub_id": "Qwen/Qwen3-0.6B",
-        "model_path": ".readiness-assets/models/Qwen__Qwen3-0.6B",
+        "model_path": f"{WORKSPACE_ASSET_ROOT}/models/Qwen__Qwen3-0.6B",
         "dataset_hub_id": "karthiksagarn/astro_horoscope",
-        "dataset_path": ".readiness-assets/datasets/karthiksagarn__astro_horoscope",
+        "dataset_path": f"{WORKSPACE_ASSET_ROOT}/datasets/karthiksagarn__astro_horoscope",
         "dataset_split": "train",
         "reference_transformers_version": "4.57.6",
         "runtime_profile": [
@@ -117,7 +118,21 @@ def normalize_dataset_hub_id(value: Optional[str]) -> Optional[str]:
 
 def default_asset_path(kind: str, repo_id: str) -> str:
     safe = repo_id.replace("/", "__").replace("\\", "__").replace(":", "_").replace(" ", "_")
-    return f".readiness-assets/{kind}/{safe}"
+    return f"{WORKSPACE_ASSET_ROOT}/{kind}/{safe}"
+
+
+def default_framework_path(
+    target_type: Optional[str],
+    explicit_framework: Optional[str],
+    local_framework: Optional[str],
+    recipe_framework: Optional[str],
+) -> Tuple[Optional[str], Optional[str]]:
+    framework_path = explicit_framework or local_framework or recipe_framework
+    if framework_path:
+        return framework_path, None
+    if target_type == "training":
+        return "pta", "training target defaulted to PTA because no explicit MindSpore request or local framework evidence was found"
+    return None, None
 
 
 def resolve_example_recipe(
@@ -377,14 +392,21 @@ def build_execution_target(
     recipe = resolve_example_recipe(discovered_target or target_hint, model_hub_id, dataset_hub_id)
     if recipe and not chosen_script:
         chosen_script = root / str(recipe["entry_script"])
-        evidence.append(f"bundled example recipe selected: {recipe['recipe_id']}")
+        evidence.append(f"bundled training example selected: {recipe['recipe_id']}")
         discovered_target = discovered_target or "training"
 
-    framework_path = requested_framework or local_framework or (recipe.get("framework_path") if recipe else None)
+    framework_path, framework_default_reason = default_framework_path(
+        discovered_target or target_hint,
+        requested_framework,
+        local_framework,
+        recipe.get("framework_path") if recipe else None,
+    )
     if requested_framework and local_framework and requested_framework != local_framework:
         evidence.append(
             f"local workspace evidence suggests {local_framework}, but explicit framework hint requested {requested_framework}"
         )
+    if framework_default_reason:
+        evidence.append(framework_default_reason)
 
     config_path = None
     if config_path_hint:
@@ -405,7 +427,7 @@ def build_execution_target(
             evidence.append("model path inferred from workspace model markers")
         elif recipe:
             model_path = str(recipe["model_path"])
-            evidence.append("default local model path derived from bundled example recipe")
+            evidence.append("default local model path derived from the bundled training example")
         elif model_hub_id:
             model_path = default_asset_path("models", model_hub_id)
             evidence.append("default local model path derived from model_hub_id")
@@ -416,7 +438,7 @@ def build_execution_target(
         evidence.append("explicit dataset_path input provided")
     elif recipe:
         dataset_path = str(recipe["dataset_path"])
-        evidence.append("default local dataset path derived from bundled example recipe")
+        evidence.append("default local dataset path derived from the bundled training example")
     elif dataset_hub_id:
         dataset_path = default_asset_path("datasets", dataset_hub_id)
         evidence.append("default local dataset path derived from dataset_hub_id")

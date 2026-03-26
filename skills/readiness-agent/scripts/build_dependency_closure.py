@@ -349,7 +349,12 @@ def build_framework_layer(
     python_layer: dict,
     probe_env: Optional[Dict[str, str]] = None,
 ) -> dict:
-    framework_path = target.get("framework_path") or "unknown"
+    framework_path = str(target.get("framework_path") or "unknown")
+    if framework_path == "unknown":
+        target_type = str(target.get("target_type") or "").strip().lower()
+        framework_hint = str(target.get("framework_hint") or "").strip().lower()
+        if target_type == "training" and framework_hint != "mindspore":
+            framework_path = "pta"
     required_packages: List[str] = []
     if framework_path == "mindspore":
         required_packages = ["mindspore"]

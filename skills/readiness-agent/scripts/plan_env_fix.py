@@ -42,6 +42,8 @@ def infer_framework_action(summary: str, closure: dict) -> Tuple[str, str]:
         return "repair_mindspore_framework", "MindSpore framework path requires repair inside the selected environment."
     if "torch_npu" in text or "torch" in text or framework_path == "pta":
         return "repair_pta_framework", "PTA framework path requires repair inside the selected environment."
+    if closure.get("target_type") == "training":
+        return "repair_pta_framework", "Training framework repair defaults to PTA unless MindSpore was explicitly requested."
     return "repair_framework", "Framework path requires repair inside the selected environment."
 
 
@@ -66,7 +68,11 @@ def package_hints(blocker: dict, closure: dict, *, framework_fallback: bool = Fa
     if packages:
         return packages
     if framework_fallback:
-        return closure.get("layers", {}).get("framework", {}).get("required_packages", [])
+        framework_packages = closure.get("layers", {}).get("framework", {}).get("required_packages", [])
+        if framework_packages:
+            return framework_packages
+        if closure.get("target_type") == "training":
+            return ["torch", "torch_npu"]
     return []
 
 
@@ -183,7 +189,7 @@ def plan_actions(blockers: List[dict], closure: dict, allow_network: bool, fix_s
                         "Scaffold the bundled training entry script into the workspace.",
                         True,
                         True,
-                        "A bundled example recipe can materialize the missing training entry script.",
+                        "A bundled training example can materialize the missing training entry script.",
                         revalidation_scope or ["workspace-assets", "target", "runtime-dependencies"],
                         template_path=template_path,
                         destination_path=asset_local_path,

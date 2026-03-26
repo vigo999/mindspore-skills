@@ -112,13 +112,70 @@ def test_discover_execution_target_applies_qwen_huggingface_recipe(tmp_path: Pat
     )
     target = json.loads(output.read_text(encoding="utf-8"))
     assert target["target_type"] == "training"
-    assert target["entry_script"] == ".readiness-assets/examples/train_qwen3_0_6b_hf.py"
+    assert target["entry_script"] == "workspace-assets/examples/train_qwen3_0_6b.py"
     assert target["model_hub_id"] == "Qwen/Qwen3-0.6B"
     assert target["dataset_hub_id"] == "karthiksagarn/astro_horoscope"
     assert target["dataset_split"] == "train"
     assert target["reference_transformers_version"] == "4.57.6"
     assert target["example_recipe_id"] == "qwen3-0.6b-hf-training"
     assert any(item.get("package_name") == "transformers==4.57.6" for item in target["expected_runtime_profile"])
+
+
+def test_discover_execution_target_keeps_existing_training_script_when_recipe_matches(tmp_path: Path):
+    (tmp_path / "train.py").write_text("import torch\nimport torch_npu\n", encoding="utf-8")
+    output = tmp_path / "target.json"
+
+    run_script(
+        "discover_execution_target.py",
+        "--working-dir",
+        str(tmp_path),
+        "--target",
+        "training",
+        "--model-hub-id",
+        "qwen3-0.6b",
+        "--output-json",
+        str(output),
+    )
+    target = json.loads(output.read_text(encoding="utf-8"))
+    assert target["entry_script"] == "train.py"
+    assert target["example_recipe_id"] == "qwen3-0.6b-hf-training"
+    assert target["model_path"] == "workspace-assets/models/Qwen__Qwen3-0.6B"
+    assert target["dataset_path"] == "workspace-assets/datasets/karthiksagarn__astro_horoscope"
+
+
+def test_discover_execution_target_defaults_training_framework_to_pta_without_explicit_mindspore(tmp_path: Path):
+    output = tmp_path / "target.json"
+
+    run_script(
+        "discover_execution_target.py",
+        "--working-dir",
+        str(tmp_path),
+        "--target",
+        "training",
+        "--output-json",
+        str(output),
+    )
+    target = json.loads(output.read_text(encoding="utf-8"))
+    assert target["framework_path"] == "pta"
+    assert any("training target defaulted to PTA" in item for item in target["evidence"])
+
+
+def test_discover_execution_target_respects_explicit_mindspore_for_training(tmp_path: Path):
+    output = tmp_path / "target.json"
+
+    run_script(
+        "discover_execution_target.py",
+        "--working-dir",
+        str(tmp_path),
+        "--target",
+        "training",
+        "--framework-hint",
+        "mindspore",
+        "--output-json",
+        str(output),
+    )
+    target = json.loads(output.read_text(encoding="utf-8"))
+    assert target["framework_path"] == "mindspore"
 
 
 def test_resolve_selected_python_prefers_explicit_python(tmp_path: Path):
@@ -320,6 +377,34 @@ def test_build_dependency_closure_tracks_required_assets(tmp_path: Path):
     assert closure["complete_for_static_validation"] is True
 
 
+def test_build_dependency_closure_defaults_training_framework_to_pta_when_unknown(tmp_path: Path):
+    target_path = tmp_path / "target.json"
+    closure_path = tmp_path / "closure.json"
+    target_path.write_text(
+        json.dumps(
+            {
+                "working_dir": str(tmp_path),
+                "target_type": "training",
+                "framework_path": "unknown",
+                "framework_hint": "auto",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    run_script(
+        "build_dependency_closure.py",
+        "--target-json",
+        str(target_path),
+        "--output-json",
+        str(closure_path),
+    )
+    closure = json.loads(closure_path.read_text(encoding="utf-8"))
+    framework = closure["layers"]["framework"]
+    assert framework["framework_path"] == "pta"
+    assert framework["required_packages"] == ["torch", "torch_npu"]
+
+
 def test_build_dependency_closure_uses_recipe_runtime_profile_without_entry_script(tmp_path: Path):
     target_path = tmp_path / "target.json"
     closure_path = tmp_path / "closure.json"
@@ -328,12 +413,12 @@ def test_build_dependency_closure_uses_recipe_runtime_profile_without_entry_scri
             {
                 "working_dir": str(tmp_path),
                 "target_type": "training",
-                "entry_script": ".readiness-assets/examples/train_qwen3_0_6b_hf.py",
+                "entry_script": "workspace-assets/examples/train_qwen3_0_6b.py",
                 "framework_path": "pta",
                 "selected_python": sys.executable,
-                "model_path": ".readiness-assets/models/Qwen__Qwen3-0.6B",
+                "model_path": "workspace-assets/models/Qwen__Qwen3-0.6B",
                 "model_hub_id": "Qwen/Qwen3-0.6B",
-                "dataset_path": ".readiness-assets/datasets/karthiksagarn__astro_horoscope",
+                "dataset_path": "workspace-assets/datasets/karthiksagarn__astro_horoscope",
                 "dataset_hub_id": "karthiksagarn/astro_horoscope",
                 "dataset_split": "train",
                 "expected_runtime_profile": [
@@ -1130,17 +1215,17 @@ def test_collect_readiness_checks_marks_huggingface_assets_as_remediable(tmp_pat
                         "required_imports": [],
                         "import_probes": {},
                     },
-                    "workspace_assets": {
-                        "entry_script": {
-                            "path": ".readiness-assets/examples/train_qwen3_0_6b_hf.py",
+                        "workspace_assets": {
+                            "entry_script": {
+                            "path": "workspace-assets/examples/train_qwen3_0_6b.py",
                             "exists": False,
                             "required": True,
                             "source": "bundled-example",
-                            "template_path": str(ROOT / "examples" / "qwen3_0_6b_training_local_assets.py"),
+                            "template_path": str(ROOT / "examples" / "qwen3_0_6b_training_example.py"),
                             "example_recipe_id": "qwen3-0.6b-hf-training",
                         },
                         "model_path": {
-                            "path": ".readiness-assets/models/Qwen__Qwen3-0.6B",
+                            "path": "workspace-assets/models/Qwen__Qwen3-0.6B",
                             "exists": False,
                             "required": True,
                             "asset_provider": "huggingface",
@@ -1148,7 +1233,7 @@ def test_collect_readiness_checks_marks_huggingface_assets_as_remediable(tmp_pat
                             "repo_type": "model",
                         },
                         "dataset_path": {
-                            "path": ".readiness-assets/datasets/karthiksagarn__astro_horoscope",
+                            "path": "workspace-assets/datasets/karthiksagarn__astro_horoscope",
                             "exists": False,
                             "required": True,
                             "asset_provider": "huggingface",
@@ -1175,7 +1260,7 @@ def test_collect_readiness_checks_marks_huggingface_assets_as_remediable(tmp_pat
     checks = json.loads(checks_path.read_text(encoding="utf-8"))
     by_id = {item["id"]: item for item in checks}
     assert by_id["workspace-entry_script"]["category_hint"] == "asset"
-    assert by_id["workspace-entry_script"]["template_path"].endswith("qwen3_0_6b_training_local_assets.py")
+    assert by_id["workspace-entry_script"]["template_path"].endswith("qwen3_0_6b_training_example.py")
     assert by_id["workspace-model_path"]["category_hint"] == "asset"
     assert by_id["workspace-model_path"]["asset_repo_id"] == "Qwen/Qwen3-0.6B"
     assert by_id["workspace-dataset_path"]["category_hint"] == "asset"
@@ -1840,6 +1925,56 @@ def test_plan_env_fix_maps_remediable_blockers_to_actions(tmp_path: Path):
     assert plan["actions"][1]["package_names"] == ["mindspore"]
 
 
+def test_plan_env_fix_defaults_training_framework_repair_to_pta(tmp_path: Path):
+    blockers_path = tmp_path / "normalized.json"
+    closure_path = tmp_path / "closure.json"
+    plan_path = tmp_path / "plan.json"
+
+    blockers_path.write_text(
+        json.dumps(
+            {
+                "blockers_detailed": [
+                    {
+                        "id": "framework-missing",
+                        "category": "framework_remediable",
+                        "summary": "Framework packages are missing.",
+                        "remediable": True,
+                        "revalidation_scope": ["framework", "task-smoke"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    closure_path.write_text(
+        json.dumps(
+            {
+                "target_type": "training",
+                "layers": {
+                    "framework": {
+                        "framework_path": "unknown",
+                        "required_packages": [],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    run_script(
+        "plan_env_fix.py",
+        "--blockers-json",
+        str(blockers_path),
+        "--closure-json",
+        str(closure_path),
+        "--output-json",
+        str(plan_path),
+    )
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    assert plan["actions"][0]["action_type"] == "repair_pta_framework"
+    assert plan["actions"][0]["package_names"] == ["torch", "torch_npu"]
+
+
 def test_plan_env_fix_plans_huggingface_downloads_and_example_scaffold(tmp_path: Path):
     blockers_path = tmp_path / "normalized.json"
     closure_path = tmp_path / "closure.json"
@@ -1852,11 +1987,11 @@ def test_plan_env_fix_plans_huggingface_downloads_and_example_scaffold(tmp_path:
                     {
                         "id": "workspace-entry_script",
                         "category": "asset_remediable",
-                        "summary": "Required training entry script is missing but can be scaffolded from the bundled example recipe.",
+                        "summary": "Required training entry script is missing but can be scaffolded from the bundled training example.",
                         "remediable": True,
-                        "template_path": str(ROOT / "examples" / "qwen3_0_6b_training_local_assets.py"),
+                        "template_path": str(ROOT / "examples" / "qwen3_0_6b_training_example.py"),
                         "asset_kind": "entry_script",
-                        "asset_local_path": ".readiness-assets/examples/train_qwen3_0_6b_hf.py",
+                        "asset_local_path": "workspace-assets/examples/train_qwen3_0_6b.py",
                         "revalidation_scope": ["workspace-assets", "target", "runtime-dependencies"],
                     },
                     {
@@ -1867,7 +2002,7 @@ def test_plan_env_fix_plans_huggingface_downloads_and_example_scaffold(tmp_path:
                         "asset_kind": "model_path",
                         "asset_provider": "huggingface",
                         "asset_repo_id": "Qwen/Qwen3-0.6B",
-                        "asset_local_path": ".readiness-assets/models/Qwen__Qwen3-0.6B",
+                        "asset_local_path": "workspace-assets/models/Qwen__Qwen3-0.6B",
                         "revalidation_scope": ["workspace-assets", "task-smoke"],
                     },
                     {
@@ -1878,7 +2013,7 @@ def test_plan_env_fix_plans_huggingface_downloads_and_example_scaffold(tmp_path:
                         "asset_kind": "dataset_path",
                         "asset_provider": "huggingface",
                         "asset_repo_id": "karthiksagarn/astro_horoscope",
-                        "asset_local_path": ".readiness-assets/datasets/karthiksagarn__astro_horoscope",
+                        "asset_local_path": "workspace-assets/datasets/karthiksagarn__astro_horoscope",
                         "dataset_split": "train",
                         "revalidation_scope": ["workspace-assets", "task-smoke"],
                     },
@@ -1963,7 +2098,7 @@ def test_execute_env_fix_scaffolds_example_entry_script(tmp_path: Path):
     plan_path = tmp_path / "plan.json"
     output_path = tmp_path / "result.json"
     template_path = tmp_path / "template.py"
-    destination_path = tmp_path / ".readiness-assets" / "examples" / "train_qwen3_0_6b_hf.py"
+    destination_path = tmp_path / "workspace-assets" / "examples" / "train_qwen3_0_6b.py"
     template_path.write_text("print('example')\n", encoding="utf-8")
     plan_path.write_text(
         json.dumps(
@@ -2104,8 +2239,8 @@ def test_execute_env_fix_downloads_huggingface_assets(tmp_path: Path):
     env_root = tmp_path / ".venv"
     modules_dir = tmp_path / "fake-modules"
     uv_dir = tmp_path / "fake-uv"
-    model_dest = tmp_path / ".readiness-assets" / "models" / "Qwen__Qwen3-0.6B"
-    dataset_dest = tmp_path / ".readiness-assets" / "datasets" / "karthiksagarn__astro_horoscope"
+    model_dest = tmp_path / "workspace-assets" / "models" / "Qwen__Qwen3-0.6B"
+    dataset_dest = tmp_path / "workspace-assets" / "datasets" / "karthiksagarn__astro_horoscope"
 
     python_path = env_root / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     python_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2939,4 +3074,171 @@ raise SystemExit(0)
     assert "https://download.pytorch.org/whl/cpu" in calls[0]
     assert "torch" in calls[0]
     assert "torch_npu" not in calls[0]
+    assert "--index-url" in calls[1]
+    assert "https://pypi.tuna.tsinghua.edu.cn/simple" in calls[1]
     assert "torch_npu" in calls[1]
+
+
+def test_execute_env_fix_prefers_tsinghua_mirror_for_runtime_dependency(tmp_path: Path):
+    plan_path = tmp_path / "plan.json"
+    result_path = tmp_path / "result.json"
+    log_path = tmp_path / "uv-log.jsonl"
+    env_root = tmp_path / ".venv"
+    python_path = env_root / "bin" / "python"
+    python_path.parent.mkdir(parents=True)
+    python_path.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    python_path.chmod(python_path.stat().st_mode | 0o111)
+
+    plan_path.write_text(
+        json.dumps(
+            {
+                "actions": [
+                    {
+                        "id": "action-1",
+                        "action_type": "install_runtime_dependency",
+                        "allowed": True,
+                        "requires_confirmation": False,
+                        "reason": "Missing runtime dependency.",
+                        "revalidation_scope": ["runtime-dependencies"],
+                        "package_names": ["datasets"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    uv_dir = tmp_path / "fake-uv"
+    uv_dir.mkdir()
+    uv_py = uv_dir / "uv"
+    uv_py.write_text(
+        f"""#!/usr/bin/env python3
+import json
+import sys
+from pathlib import Path
+
+log_path = Path(r"{log_path}")
+log_path.parent.mkdir(parents=True, exist_ok=True)
+log_path.open("a", encoding="utf-8").write(json.dumps(sys.argv[1:]) + "\\n")
+raise SystemExit(0)
+""",
+        encoding="utf-8",
+    )
+    uv_py.chmod(uv_py.stat().st_mode | 0o111)
+    uv_cmd = uv_dir / "uv.cmd"
+    uv_cmd.write_text(f'@echo off\r\n"{sys.executable}" "%~dp0uv" %*\r\n', encoding="utf-8")
+
+    env = dict(os.environ)
+    env["PATH"] = str(uv_dir) + os.pathsep + env.get("PATH", "")
+
+    run_script(
+        "execute_env_fix.py",
+        "--plan-json",
+        str(plan_path),
+        "--output-json",
+        str(result_path),
+        "--execute",
+        "--working-dir",
+        str(tmp_path),
+        "--selected-env-root",
+        str(env_root),
+        env=env,
+    )
+
+    calls = [
+        json.loads(line)
+        for line in log_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+
+    assert len(calls) == 1
+    assert calls[0][:4] == ["pip", "install", "--python", str(python_path)]
+    assert "--index-url" in calls[0]
+    assert "https://pypi.tuna.tsinghua.edu.cn/simple" in calls[0]
+    assert result["results"][0]["status"] == "executed"
+
+
+def test_execute_env_fix_falls_back_after_default_tsinghua_mirror_failure(tmp_path: Path):
+    plan_path = tmp_path / "plan.json"
+    result_path = tmp_path / "result.json"
+    log_path = tmp_path / "uv-log.jsonl"
+    env_root = tmp_path / ".venv"
+    python_path = env_root / "bin" / "python"
+    python_path.parent.mkdir(parents=True)
+    python_path.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    python_path.chmod(python_path.stat().st_mode | 0o111)
+
+    plan_path.write_text(
+        json.dumps(
+            {
+                "actions": [
+                    {
+                        "id": "action-1",
+                        "action_type": "install_runtime_dependency",
+                        "allowed": True,
+                        "requires_confirmation": False,
+                        "reason": "Missing runtime dependency.",
+                        "revalidation_scope": ["runtime-dependencies"],
+                        "package_names": ["sentencepiece"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    uv_dir = tmp_path / "fake-uv"
+    uv_dir.mkdir()
+    uv_py = uv_dir / "uv"
+    uv_py.write_text(
+        f"""#!/usr/bin/env python3
+import json
+import sys
+from pathlib import Path
+
+log_path = Path(r"{log_path}")
+log_path.parent.mkdir(parents=True, exist_ok=True)
+argv = sys.argv[1:]
+log_path.open("a", encoding="utf-8").write(json.dumps(argv) + "\\n")
+if "--index-url" in argv and "https://pypi.tuna.tsinghua.edu.cn/simple" in argv:
+    sys.stderr.write("mirror failed\\n")
+    raise SystemExit(1)
+raise SystemExit(0)
+""",
+        encoding="utf-8",
+    )
+    uv_py.chmod(uv_py.stat().st_mode | 0o111)
+    uv_cmd = uv_dir / "uv.cmd"
+    uv_cmd.write_text(f'@echo off\r\n"{sys.executable}" "%~dp0uv" %*\r\n', encoding="utf-8")
+
+    env = dict(os.environ)
+    env["PATH"] = str(uv_dir) + os.pathsep + env.get("PATH", "")
+
+    run_script(
+        "execute_env_fix.py",
+        "--plan-json",
+        str(plan_path),
+        "--output-json",
+        str(result_path),
+        "--execute",
+        "--working-dir",
+        str(tmp_path),
+        "--selected-env-root",
+        str(env_root),
+        env=env,
+    )
+
+    calls = [
+        json.loads(line)
+        for line in log_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+
+    assert len(calls) == 2
+    assert "--index-url" in calls[0]
+    assert "https://pypi.tuna.tsinghua.edu.cn/simple" in calls[0]
+    assert "--index-url" not in calls[1]
+    assert result["results"][0]["status"] == "executed"
+    assert "fell back to the default package index" in result["results"][0]["reason"]

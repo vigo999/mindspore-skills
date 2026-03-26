@@ -505,7 +505,7 @@ def collect_checks(target: dict, closure: dict) -> List[dict]:
                     make_check(
                         f"workspace-{key}",
                         "block",
-                        "Required training entry script is missing but can be scaffolded from the bundled example recipe.",
+                        "Required training entry script is missing but can be scaffolded from the bundled training example.",
                         category_hint="asset",
                         severity="high",
                         remediable=True,

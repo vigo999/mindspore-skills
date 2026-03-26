@@ -14,6 +14,7 @@ from python_selection import derive_env_root_from_python, python_in_env
 
 UV_INSTALL_CMD = "curl -LsSf https://astral.sh/uv/install.sh | sh"
 TORCH_CPU_INDEX_URL = "https://download.pytorch.org/whl/cpu"
+DEFAULT_PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
 PTA_CPU_TORCH_PACKAGES = {"torch", "torchvision", "torchaudio"}
 DEFAULT_HF_ENDPOINT = "https://hf-mirror.com"
 HF_MODEL_DOWNLOAD_CODE = textwrap.dedent(
@@ -127,6 +128,35 @@ def package_base_name(package_name: str) -> str:
     return parts[0].strip().replace("_", "-").lower()
 
 
+def preferred_pip_index_url() -> Tuple[str, bool]:
+    explicit_index = os.environ.get("READINESS_PIP_INDEX_URL") or os.environ.get("PIP_INDEX_URL")
+    if explicit_index:
+        return explicit_index, False
+    return DEFAULT_PIP_INDEX_URL, True
+
+
+def run_install_command(cmd: List[str]) -> Tuple[bool, str]:
+    try:
+        subprocess.run(cmd, check=True, text=True, capture_output=True)
+    except subprocess.CalledProcessError as exc:
+        return False, exc.stderr.strip() or exc.stdout.strip() or "uv pip install failed"
+    return True, ""
+
+
+def build_uv_pip_install_command(
+    uv_path: Path,
+    python_path: Path,
+    package_names: List[str],
+    *,
+    index_url: Optional[str] = None,
+) -> List[str]:
+    cmd = [str(uv_path), "pip", "install", "--python", str(python_path)]
+    if index_url:
+        cmd.extend(["--index-url", index_url])
+    cmd.extend(package_names)
+    return cmd
+
+
 def install_packages(env_root: Path, package_names: List[str], index_url: Optional[str] = None) -> Tuple[bool, str]:
     uv_path = resolve_uv_executable()
     if not uv_path:
@@ -136,15 +166,38 @@ def install_packages(env_root: Path, package_names: List[str], index_url: Option
         return False, "selected environment python is missing"
     if not package_names:
         return False, "no package names were provided"
-    cmd = [str(uv_path), "pip", "install", "--python", str(python_path)]
-    if index_url:
-        cmd.extend(["--index-url", index_url])
-    cmd.extend(package_names)
-    try:
-        subprocess.run(cmd, check=True, text=True, capture_output=True)
-    except subprocess.CalledProcessError as exc:
-        return False, exc.stderr.strip() or exc.stdout.strip() or "uv pip install failed"
-    return True, f"installed {' '.join(package_names)}"
+
+    install_index_url = index_url
+    allow_default_fallback = False
+    if not install_index_url:
+        install_index_url, allow_default_fallback = preferred_pip_index_url()
+
+    cmd = build_uv_pip_install_command(
+        uv_path,
+        python_path,
+        package_names,
+        index_url=install_index_url,
+    )
+    ok, message = run_install_command(cmd)
+    if ok:
+        if install_index_url:
+            return True, f"installed {' '.join(package_names)} from {install_index_url}"
+        return True, f"installed {' '.join(package_names)}"
+
+    if allow_default_fallback:
+        fallback_cmd = build_uv_pip_install_command(uv_path, python_path, package_names)
+        ok, fallback_message = run_install_command(fallback_cmd)
+        if ok:
+            return True, (
+                f"installed {' '.join(package_names)} after {install_index_url} failed; "
+                "fell back to the default package index"
+            )
+        return False, (
+            f"{install_index_url} failed: {message}; "
+            f"default index fallback failed: {fallback_message}"
+        )
+
+    return False, message
 
 
 def install_runtime_dependency(env_root: Path, package_name: str) -> Tuple[bool, str]:
@@ -342,7 +395,10 @@ def execute_action(action: dict, args: argparse.Namespace) -> dict:
         package_names = action.get("package_names") or []
         if not package_names and action.get("package_name"):
             package_names = [action["package_name"]]
-        result["command_preview"] = "uv pip install --python <selected_env_root>/bin/python <package_names...>"
+        result["command_preview"] = (
+            "uv pip install --python <selected_env_root>/bin/python "
+            f"--index-url {DEFAULT_PIP_INDEX_URL} <package_names...>"
+        )
         if not args.execute:
             return result
         if not env_root:
@@ -366,10 +422,14 @@ def execute_action(action: dict, args: argparse.Namespace) -> dict:
         if action_type == "repair_pta_framework":
             result["command_preview"] = (
                 "uv pip install --python <selected_env_root>/bin/python --index-url "
-                f"{TORCH_CPU_INDEX_URL} <torch...>; uv pip install --python <selected_env_root>/bin/python <torch_npu...>"
+                f"{TORCH_CPU_INDEX_URL} <torch...>; uv pip install --python "
+                f"<selected_env_root>/bin/python --index-url {DEFAULT_PIP_INDEX_URL} <torch_npu...>"
             )
         else:
-            result["command_preview"] = "uv pip install --python <selected_env_root>/bin/python <framework package_names...>"
+            result["command_preview"] = (
+                "uv pip install --python <selected_env_root>/bin/python "
+                f"--index-url {DEFAULT_PIP_INDEX_URL} <framework package_names...>"
+            )
         if not args.execute:
             return result
         if not args.confirm_framework_repair:
