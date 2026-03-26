@@ -3071,7 +3071,7 @@ raise SystemExit(0)
     ]
     assert len(calls) == 2
     assert "--index-url" in calls[0]
-    assert "https://download.pytorch.org/whl/cpu" in calls[0]
+    assert "https://pypi.tuna.tsinghua.edu.cn/simple" in calls[0]
     assert "torch" in calls[0]
     assert "torch_npu" not in calls[0]
     assert "--index-url" in calls[1]
@@ -3239,6 +3239,86 @@ raise SystemExit(0)
     assert len(calls) == 2
     assert "--index-url" in calls[0]
     assert "https://pypi.tuna.tsinghua.edu.cn/simple" in calls[0]
-    assert "--index-url" not in calls[1]
+    assert "--index-url" in calls[1]
+    assert "https://mirrors.aliyun.com/pypi/simple/" in calls[1]
     assert result["results"][0]["status"] == "executed"
-    assert "fell back to the default package index" in result["results"][0]["reason"]
+    assert "fell back to the mirror https://mirrors.aliyun.com/pypi/simple/" in result["results"][0]["reason"]
+
+
+def test_execute_env_fix_ignores_non_mirror_pip_index_override(tmp_path: Path):
+    plan_path = tmp_path / "plan.json"
+    result_path = tmp_path / "result.json"
+    log_path = tmp_path / "uv-log.jsonl"
+    env_root = tmp_path / ".venv"
+    python_path = env_root / "bin" / "python"
+    python_path.parent.mkdir(parents=True)
+    python_path.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    python_path.chmod(python_path.stat().st_mode | 0o111)
+
+    plan_path.write_text(
+        json.dumps(
+            {
+                "actions": [
+                    {
+                        "id": "action-1",
+                        "action_type": "install_runtime_dependency",
+                        "allowed": True,
+                        "requires_confirmation": False,
+                        "reason": "Missing runtime dependency.",
+                        "revalidation_scope": ["runtime-dependencies"],
+                        "package_names": ["datasets"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    uv_dir = tmp_path / "fake-uv"
+    uv_dir.mkdir()
+    uv_py = uv_dir / "uv"
+    uv_py.write_text(
+        f"""#!/usr/bin/env python3
+import json
+import sys
+from pathlib import Path
+
+log_path = Path(r"{log_path}")
+log_path.parent.mkdir(parents=True, exist_ok=True)
+log_path.open("a", encoding="utf-8").write(json.dumps(sys.argv[1:]) + "\\n")
+raise SystemExit(0)
+""",
+        encoding="utf-8",
+    )
+    uv_py.chmod(uv_py.stat().st_mode | 0o111)
+    uv_cmd = uv_dir / "uv.cmd"
+    uv_cmd.write_text(f'@echo off\r\n"{sys.executable}" "%~dp0uv" %*\r\n', encoding="utf-8")
+
+    env = dict(os.environ)
+    env["PATH"] = str(uv_dir) + os.pathsep + env.get("PATH", "")
+    env["PIP_INDEX_URL"] = "https://pypi.org/simple"
+
+    run_script(
+        "execute_env_fix.py",
+        "--plan-json",
+        str(plan_path),
+        "--output-json",
+        str(result_path),
+        "--execute",
+        "--working-dir",
+        str(tmp_path),
+        "--selected-env-root",
+        str(env_root),
+        env=env,
+    )
+
+    calls = [
+        json.loads(line)
+        for line in log_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+    assert len(calls) == 1
+    assert "--index-url" in calls[0]
+    assert "https://pypi.tuna.tsinghua.edu.cn/simple" in calls[0]
+    assert "https://pypi.org/simple" not in calls[0]

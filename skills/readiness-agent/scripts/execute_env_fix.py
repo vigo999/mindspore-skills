@@ -13,8 +13,12 @@ from python_selection import derive_env_root_from_python, python_in_env
 
 
 UV_INSTALL_CMD = "curl -LsSf https://astral.sh/uv/install.sh | sh"
-TORCH_CPU_INDEX_URL = "https://download.pytorch.org/whl/cpu"
 DEFAULT_PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
+FALLBACK_PIP_INDEX_URL = "https://mirrors.aliyun.com/pypi/simple/"
+SUPPORTED_PIP_INDEX_URLS = (
+    DEFAULT_PIP_INDEX_URL,
+    FALLBACK_PIP_INDEX_URL,
+)
 PTA_CPU_TORCH_PACKAGES = {"torch", "torchvision", "torchaudio"}
 DEFAULT_HF_ENDPOINT = "https://hf-mirror.com"
 HF_MODEL_DOWNLOAD_CODE = textwrap.dedent(
@@ -128,11 +132,29 @@ def package_base_name(package_name: str) -> str:
     return parts[0].strip().replace("_", "-").lower()
 
 
-def preferred_pip_index_url() -> Tuple[str, bool]:
+def normalize_index_url(index_url: str) -> str:
+    return index_url.rstrip("/")
+
+
+def is_supported_pip_index_url(index_url: str) -> bool:
+    normalized = normalize_index_url(index_url)
+    return any(normalized == normalize_index_url(item) for item in SUPPORTED_PIP_INDEX_URLS)
+
+
+def preferred_pip_index_urls() -> List[str]:
     explicit_index = os.environ.get("READINESS_PIP_INDEX_URL") or os.environ.get("PIP_INDEX_URL")
-    if explicit_index:
-        return explicit_index, False
-    return DEFAULT_PIP_INDEX_URL, True
+    if explicit_index and is_supported_pip_index_url(explicit_index):
+        primary = explicit_index
+    else:
+        primary = DEFAULT_PIP_INDEX_URL
+
+    ordered_indexes = [primary]
+    ordered_indexes.extend(
+        index_url
+        for index_url in SUPPORTED_PIP_INDEX_URLS
+        if normalize_index_url(index_url) != normalize_index_url(primary)
+    )
+    return ordered_indexes
 
 
 def run_install_command(cmd: List[str]) -> Tuple[bool, str]:
@@ -167,37 +189,32 @@ def install_packages(env_root: Path, package_names: List[str], index_url: Option
     if not package_names:
         return False, "no package names were provided"
 
-    install_index_url = index_url
-    allow_default_fallback = False
-    if not install_index_url:
-        install_index_url, allow_default_fallback = preferred_pip_index_url()
+    if index_url:
+        if not is_supported_pip_index_url(index_url):
+            return False, f"non-mirror package index is not allowed: {index_url}"
+        index_urls = [index_url]
+    else:
+        index_urls = preferred_pip_index_urls()
 
-    cmd = build_uv_pip_install_command(
-        uv_path,
-        python_path,
-        package_names,
-        index_url=install_index_url,
-    )
-    ok, message = run_install_command(cmd)
-    if ok:
-        if install_index_url:
-            return True, f"installed {' '.join(package_names)} from {install_index_url}"
-        return True, f"installed {' '.join(package_names)}"
-
-    if allow_default_fallback:
-        fallback_cmd = build_uv_pip_install_command(uv_path, python_path, package_names)
-        ok, fallback_message = run_install_command(fallback_cmd)
-        if ok:
-            return True, (
-                f"installed {' '.join(package_names)} after {install_index_url} failed; "
-                "fell back to the default package index"
-            )
-        return False, (
-            f"{install_index_url} failed: {message}; "
-            f"default index fallback failed: {fallback_message}"
+    failures = []
+    for current_index_url in index_urls:
+        cmd = build_uv_pip_install_command(
+            uv_path,
+            python_path,
+            package_names,
+            index_url=current_index_url,
         )
+        ok, message = run_install_command(cmd)
+        if ok:
+            if current_index_url == index_urls[0]:
+                return True, f"installed {' '.join(package_names)} from {current_index_url}"
+            return True, (
+                f"installed {' '.join(package_names)} after {index_urls[0]} failed; "
+                f"fell back to the mirror {current_index_url}"
+            )
+        failures.append(f"{current_index_url} failed: {message}")
 
-    return False, message
+    return False, "; ".join(failures)
 
 
 def install_runtime_dependency(env_root: Path, package_name: str) -> Tuple[bool, str]:
@@ -218,10 +235,10 @@ def install_pta_framework_packages(env_root: Path, package_names: List[str]) -> 
 
     messages: List[str] = []
     if cpu_torch_packages:
-        ok, message = install_packages(env_root, cpu_torch_packages, index_url=TORCH_CPU_INDEX_URL)
+        ok, message = install_packages(env_root, cpu_torch_packages)
         if not ok:
             return False, message
-        messages.append(f"{message} from cpu index")
+        messages.append(message)
 
     if remaining_packages:
         ok, message = install_packages(env_root, remaining_packages)
@@ -397,7 +414,8 @@ def execute_action(action: dict, args: argparse.Namespace) -> dict:
             package_names = [action["package_name"]]
         result["command_preview"] = (
             "uv pip install --python <selected_env_root>/bin/python "
-            f"--index-url {DEFAULT_PIP_INDEX_URL} <package_names...>"
+            f"--index-url {DEFAULT_PIP_INDEX_URL} <package_names...> "
+            f"(fallback: {FALLBACK_PIP_INDEX_URL})"
         )
         if not args.execute:
             return result
@@ -422,13 +440,16 @@ def execute_action(action: dict, args: argparse.Namespace) -> dict:
         if action_type == "repair_pta_framework":
             result["command_preview"] = (
                 "uv pip install --python <selected_env_root>/bin/python --index-url "
-                f"{TORCH_CPU_INDEX_URL} <torch...>; uv pip install --python "
-                f"<selected_env_root>/bin/python --index-url {DEFAULT_PIP_INDEX_URL} <torch_npu...>"
+                f"{DEFAULT_PIP_INDEX_URL} <torch...> (fallback: {FALLBACK_PIP_INDEX_URL}); "
+                "uv pip install --python "
+                f"<selected_env_root>/bin/python --index-url {DEFAULT_PIP_INDEX_URL} <torch_npu...> "
+                f"(fallback: {FALLBACK_PIP_INDEX_URL})"
             )
         else:
             result["command_preview"] = (
                 "uv pip install --python <selected_env_root>/bin/python "
-                f"--index-url {DEFAULT_PIP_INDEX_URL} <framework package_names...>"
+                f"--index-url {DEFAULT_PIP_INDEX_URL} <framework package_names...> "
+                f"(fallback: {FALLBACK_PIP_INDEX_URL})"
             )
         if not args.execute:
             return result

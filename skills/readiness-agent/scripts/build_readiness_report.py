@@ -10,6 +10,7 @@ from uuid import uuid4
 READY_LEVELS = {"runtime_smoke", "task_smoke"}
 AUTO_REMEDIABLE_CATEGORIES = {"env_remediable", "framework_remediable", "asset_remediable"}
 DEFAULT_PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
+FALLBACK_PIP_INDEX_URL = "https://mirrors.aliyun.com/pypi/simple/"
 
 
 def derive_evidence_level(checks: List[dict]) -> str:
@@ -270,6 +271,10 @@ def build_selected_environment_guidance(target: dict, dependency_closure: dict) 
             f"uv pip install --python {probe_python_path} --index-url "
             f"{DEFAULT_PIP_INDEX_URL} <package>"
         )
+        guidance["install_command_fallback"] = (
+            f"uv pip install --python {probe_python_path} --index-url "
+            f"{FALLBACK_PIP_INDEX_URL} <package>"
+        )
     else:
         guidance["verification_command"] = None
         guidance["install_command"] = None
@@ -388,6 +393,8 @@ def render_markdown(report: dict) -> str:
         lines.append(f"- verification_command: `{guidance['verification_command']}`")
     if guidance.get("install_command"):
         lines.append(f"- install_command: `{guidance['install_command']}`")
+    if guidance.get("install_command_fallback"):
+        lines.append(f"- install_command_fallback: `{guidance['install_command_fallback']}`")
     if guidance.get("message"):
         lines.append(f"- message: {guidance['message']}")
     lines.append("")
