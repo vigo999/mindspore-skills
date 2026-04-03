@@ -50,6 +50,7 @@ Do not use this skill for:
 - If evidence conflicts or is incomplete, downgrade confidence instead of
   pretending certainty.
 - Do not claim a fix is confirmed until the user verifies it.
+- Do not auto-edit code, configs, or the environment in this skill.
 - In `diagnose` mode, do not edit code, configs, or the environment.
 - In `fix` mode, do not edit anything until you have presented the diagnosis,
   proposed the fix, and received explicit user confirmation.
@@ -96,6 +97,9 @@ You must try to identify:
   - `mindspore`
   - `pta`
   - backend and device context when visible
+- stack-specific evidence:
+  - for `pta`: PyTorch, `torch_npu`, CANN, device placement, eager vs backward vs wrapper path, single-card vs distributed, and whether async launch hides the first real failure
+  - for `mindspore`: MindSpore, CANN, mode, device target, Graph vs PyNative split, forward vs backward split, and whether the failure starts in Platform, Scripts, Framework, or Backend routing
 - likely problem domains:
   - environment or runtime
   - libraries
@@ -131,6 +135,17 @@ When useful, read the latest preflight or readiness snapshot such as
 If `factory_root` is provided or discoverable, use relevant local Factory cards
 and references as supporting evidence. Treat them as evidence aids, not as a
 substitute for local validation.
+
+Validate in this default order:
+
+1. check `reference/failure-showcase.md` for a stable known-issue match
+2. route by stack into:
+   - `reference/pta-diagnosis.md`
+   - `reference/mindspore-api-reference.md`
+   - `reference/mindspore-diagnosis.md`
+   - `reference/cann-api-reference.md`
+3. use `reference/index/*.yaml` to confirm code families, API mapping, and capability or contract signals
+4. keep local traceback, logs, and artifacts primary if the index and local evidence disagree
 
 Return ranked root-cause candidates with:
 
@@ -222,9 +237,29 @@ Load these references when needed:
 - `reference/backend-diagnosis.md`
 - `reference/pta-diagnosis.md`
 - `reference/mindspore-api-reference.md`
-- `reference/mindspore-dianosis.md`
+- `reference/mindspore-diagnosis.md`
 - `reference/cann-api-reference.md`
 - `reference/failure-showcase.md`
+- `reference/index/cann_error_index.yaml`
+- `reference/index/cann_aclnn_api_index.yaml`
+- `reference/index/mint_api_index.yaml`
+- `reference/index/mint_api_methodology.md`
+
+Read them in this order by default:
+
+1. `reference/failure-showcase.md`
+2. `reference/index/cann_error_index.yaml`
+3. `reference/index/cann_aclnn_api_index.yaml`
+
+Prefer reading these when the failure explicitly lands in `mindspore.mint`,
+`mindspore.mint.nn`, or `mindspore.mint.nn.functional`:
+
+- `reference/index/mint_api_index.yaml`
+- `reference/index/mint_api_methodology.md`
+
+Optional raw source-doc outputs such as `aclError.md`, `aclnnApiError.md`,
+`mint_api_evidence.yaml`, and review artifacts are maintenance-side files. Do
+not treat them as default runtime dependencies.
 
 ## Scripts
 
@@ -232,6 +267,11 @@ Use these helper scripts when useful:
 
 - `scripts/collect_failure_context.py`
 - `scripts/summarize_traceback.py`
+
+Index generation is maintained with:
+
+- `scripts/index_builders/generate_cann_failure_index.py`
+- `scripts/index_builders/generate_mindspore_failure_index.py`
 
 ## Execution Notes
 

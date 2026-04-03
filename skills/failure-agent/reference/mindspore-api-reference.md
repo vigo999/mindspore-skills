@@ -1,132 +1,76 @@
-# MindSpore API Diagnosis Notes
+# MindSpore mint API Diagnosis Notes
 
-Use this file when stack is `ms` and the failure sits near API usage,
-execution mode, backend dispatch, or operator support.
+Use this file when stack is `ms` and the failure clearly sits in
+`mindspore.mint`, `mindspore.mint.nn`, or `mindspore.mint.nn.functional`
+usage, wrapper semantics, or `mint`-specific mode behavior.
 
-## API Layer Hierarchy
+Default structured inputs live in:
+
+- `reference/index/mint_api_index.yaml`
+- `reference/index/mint_api_methodology.md`
+
+Optional maintenance-side outputs such as `mint_api_evidence.yaml`,
+`mint_api_review_queue.yaml`, `mint_api_index_review.md`, and
+`mint_api_index_rulebook.md` are not part of the default runtime read path.
+
+Use this file as the lightweight route into the `mindspore.mint` index. Read
+the YAML index only for `mint`-scoped failures, and use
+`mint_api_methodology.md` to decide how much confidence a record deserves
+before concluding `mint` wrapper semantics or support hints.
+
+For non-`mint` failures, this index is usually not the first thing to read.
+Prefer the lightweight MindSpore routing references and source investigation
+path first when the failure is outside `mindspore.mint`.
+
+## mint API Layer Hierarchy
 
 Read the issue from top to bottom:
 
 - `mindspore.mint`
-- `mindspore.ops`
-- `mindspore.nn`
-- backend registration and kernel support
+- `mindspore.mint.nn`
+- `mindspore.mint.nn.functional`
+- the wrapped lower-layer call reached by the `mint` entrypoint
 
 If the failure only appears at one layer, do not immediately assume the lower
 layer is broken.
 
-## Execution Modes
+Practical read order:
 
-### GRAPH_MODE
+1. confirm whether the symptom is Graph vs PyNative, Ascend vs CPU, or forward vs backward specific
+2. confirm that the failing public API really lives under `mindspore.mint`, `mindspore.mint.nn`, or `mindspore.mint.nn.functional`
+3. read `reference/index/mint_api_index.yaml` for the specific `mint` API record
+4. read `reference/index/mint_api_methodology.md` when the record is inherited, indirect, or scenario-dependent
 
-Typical failure classes:
+If the failing symbol is `mindspore.ops.*`, `mindspore.nn.*`, or a backend
+Primitive without a `mint` entrypoint, prefer the general MindSpore route
+first instead of starting from the `mint` index.
 
-- graph compile failure
-- abstract/type inference failure
-- unsupported control flow or graph-only restriction
-- backend compile failures surfaced during graph build
+## mint-Focused Routing Hints
 
-### PYNATIVE_MODE
+Use this file to decide whether the failure is really `mint`-scoped before
+going deeper.
 
-Typical failure classes:
+High-value checks:
 
-- eager runtime errors
-- parameter or dtype validation issues
-- backend runtime failure on the first real operator launch
-
-High-value comparison:
-
-- if `GRAPH_MODE` fails and `PYNATIVE_MODE` works, narrow to frontend,
-  infer, graph lowering, or compile-time backend path first.
-
-## Context and Device Management
-
-Check these first on Ascend:
-
-- `device_target`
-- execution mode
-- device initialization order
-- backend-specific context config
-
-Current high-value routing checks:
-
-- `107002` / `context is empty`
-  - check `set_context` ordering and device initialization first
-  - usually aligns with `ms-context-empty`, not an operator bug
-- `device_target` mismatch
-  - verify the requested backend is available and spelled correctly
-- `TBE` compile failure on Ascend
-  - check shape, dtype, and stack compatibility before blaming user code
-  - often aligns with `ms-tbe-operator-compilation-error`
-
-## High-Value Misreads
-
-Use these sanity checks before calling a failure a backend bug:
-
-- `allclose` fails and gradients become zero
-  - route first to `bprop` or graph structure, not forward-kernel precision
-  - check whether forward results still look normal and whether the failure is backward-only
-- `AbstractProblem` or `Invalid abstract`
-  - route first to graph compile or IR cleanup, not plain shape rules
-  - check whether static shape also fails and whether the issue is `GRAPH_MODE`-only
-- small numerical drift after a recent upgrade
-  - route first to CANN version or benchmark-version drift, not operator logic
-  - check whether the deviation is small and whether the stack changed since the last known good run
-- `DID NOT RAISE`, missing `TypeError`, or list/tuple ambiguity
-  - route first to API/signature validation paths, especially Graph vs PyNative divergence
-  - check whether argument normalization or deprecated paths are bypassing validation
-- import or callable errors after refactor
-  - route first to API packaging or runtime import-path changes, not installation damage
-  - check whether the module exists but the old import path or callable shape changed
-
-## High-Frequency Operator Signals
-
-These are triage hints only. They help choose the first checks, not the final fix.
-
-- `pow` / `select`
-  - zero gradient or branch-sensitive failure usually points to `bprop` or graph structure before forward compute
-  - shape or broadcast wording may still mask a control-flow or IR issue
-- `matmul`
-  - small drift after CANN changes usually points to backend-version or accumulation behavior
-  - intermittent multi-card crashes point to runtime or communication interactions before pure math bugs
-- `trunc` / `fix`
-  - Ascend results near `2.14748e+09` or `-2.14748e+09` are strong signs of ACLNN or platform-specific behavior
-  - compare CPU and torch_npu behavior before blaming MindSpore API wiring
-- `adam` / `adamw`
-  - framework mismatch against TensorFlow or PyTorch often starts with baseline version drift
-  - `NoneType` or state-init failures often point to optimizer state setup before kernel issues
-- `sort` / `argsort`
-  - output-order or checksum instability may be nondeterminism, not a correctness regression
-  - check whether the comparison method assumes deterministic ordering
-
-## mint / ops / nn Pitfalls
-
-Common pitfalls worth checking before deep debugging:
-
-- view vs copy semantics in graph-sensitive code paths
-- return-type differences between APIs that look similar
-- experimental APIs changing across versions
-- strict parameter validation in `mint.nn` and `nn` modules
-- graph-only vs backend-only operator support differences
-
-## Operator Debugging Checklist
-
-- confirm the first failure point instead of a downstream runtime error
-- print effective context, mode, target, and key tensor dtypes/shapes
 - compare `GRAPH_MODE` vs `PYNATIVE_MODE`
-- compare Ascend vs CPU when possible
-- verify the operator is supported on the requested backend
-- check whether the failure is registration/dispatch, infer, compile, or runtime
+  - Graph-only failure usually points to wrapper semantics, infer, or graph-safe API usage before backend code
+- check view vs copy behavior in `mint` wrappers
+  - `view`, `flatten`, `squeeze`, and similar APIs can be mode-sensitive
+- check strict validation in `mint.nn`
+  - parameter validation often fails before the first real kernel launch
+- check wrapper drift first when imports or call signatures changed
+  - import-path or callable-shape errors are often API drift, not backend instability
 
-Useful commands and patterns:
-
-```bash
-rg -l "^{op_name}:" mindspore/mindspore/ops/op_def/yaml/
-rg -l "class {OpName}FuncImpl" mindspore/mindspore/ops/infer/
-rg "FACTORY_REG.*{OpName}" mindspore/mindspore/ops/kernel/
-```
+If these checks suggest a broader MindSpore route instead of a `mint`-specific
+wrapper issue, move to [mindspore-diagnosis](mindspore-diagnosis.md) rather than
+expanding the `mint` index read.
 
 ## When to Go Deeper
 
 If the issue still looks like a MindSpore operator or backend implementation
-problem after these checks, move to [mindspore-dianosis](mindspore-dianosis.md).
+problem after these checks, move to [mindspore-diagnosis](mindspore-diagnosis.md).
+
+Prefer the YAML index first only for `mindspore.mint`-scoped failures. Use the
+methodology note to understand whether the record reflects a direct fact,
+inherited wrapper behavior, or a scenario-dependent `mint` path. Do not treat
+optional raw evidence or review artifacts as default runtime dependencies.

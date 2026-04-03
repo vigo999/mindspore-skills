@@ -27,5 +27,20 @@ def test_references_and_scripts_are_declared():
     text = SKILL_MD.read_text(encoding="utf-8")
     assert "`reference/failure-taxonomy.md`" in text
     assert "`reference/root-cause-validation.md`" in text
+    assert "`reference/index/cann_error_index.yaml`" in text
+    assert "`reference/index/cann_aclnn_api_index.yaml`" in text
+    assert "`reference/index/mint_api_index.yaml`" in text
+    assert "`reference/index/mint_api_methodology.md`" in text
     assert "`scripts/collect_failure_context.py`" in text
     assert "`scripts/summarize_traceback.py`" in text
+    assert "`scripts/index_builders/generate_cann_failure_index.py`" in text
+    assert "`scripts/index_builders/generate_mindspore_failure_index.py`" in text
+
+
+def test_skill_declares_stack_specific_evidence_and_index_routing():
+    text = SKILL_MD.read_text(encoding="utf-8")
+    assert "for `pta`: PyTorch, `torch_npu`, CANN" in text
+    assert "for `mindspore`: MindSpore, CANN, mode, device target" in text
+    assert "check `reference/failure-showcase.md` for a stable known-issue match" in text
+    assert "use `reference/index/*.yaml` to confirm code families" in text
+    assert "Prefer reading these when the failure explicitly lands in `mindspore.mint`" in text
