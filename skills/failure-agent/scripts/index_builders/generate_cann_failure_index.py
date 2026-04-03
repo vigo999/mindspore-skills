@@ -30,6 +30,8 @@ WORKSPACE_DEFAULT = SCRIPT_DIR / ".tmp" / "cann"
 MANIFEST_NAME = "sources.json"
 GENERATOR_NAME = "generate_cann_failure_index.py"
 GENERATOR_VERSION = "1.0.0"
+INDEX_SCHEMA_VERSION = "1.1"
+DETERMINISTIC_TIMESTAMP = "1970-01-01T00:00:00+00:00"
 RUNTIME_REPO = {"name": "runtime", "https": "https://gitcode.com/cann/runtime.git", "ssh": "git@gitcode.com:cann/runtime.git"}
 OPS_REPOS = [
     {"name": "ops-nn", "https": "https://gitcode.com/cann/ops-nn.git", "ssh": "git@gitcode.com:cann/ops-nn.git"},
@@ -75,7 +77,26 @@ def safe_rmtree(path: Path) -> None:
         shutil.rmtree(path, onerror=_force_remove_readonly)
 
 
-def current_timestamp() -> str:
+def prune_empty_parents(path: Path, *, stop_at: Path) -> None:
+    current = path
+    stop_at = stop_at.resolve()
+    while current.exists() and current.resolve() != stop_at:
+        try:
+            current.rmdir()
+        except OSError:
+            break
+        current = current.parent
+
+
+def run_workspace_root(base_root: Path, *, keep_workspace: bool) -> Path:
+    if keep_workspace:
+        return base_root
+    return base_root / f"run-{int(time.time() * 1000)}"
+
+
+def current_timestamp(*, deterministic: bool = False) -> str:
+    if deterministic:
+        return DETERMINISTIC_TIMESTAMP
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
@@ -2295,21 +2316,42 @@ def build_aclnn_error_entries(text: str) -> list[dict[str, object]]:
     return entries
 
 
+def build_source_repositories(
+    runtime_info: dict[str, object],
+    ops_infos: list[dict[str, object]],
+) -> list[dict[str, str]]:
+    repositories = [runtime_info] + ops_infos
+    return [
+        {
+            "name": str(item.get("name", "")),
+            "repo_url": str(item.get("repo_url") or item.get("path", "")),
+            "branch": str(item.get("branch", "unknown")),
+            "commit": str(item.get("commit", "unknown")),
+            "source_type": str(item.get("source_type", "unknown")),
+        }
+        for item in repositories
+    ]
+
+
 def build_index_meta(
     runtime_info: dict[str, object],
     ops_infos: list[dict[str, object]],
     *,
     source_mode: str,
+    deterministic: bool,
 ) -> dict[str, object]:
+    source_repositories = build_source_repositories(runtime_info, ops_infos)
     return {
-        "generated_at": current_timestamp(),
+        "generated_at": current_timestamp(deterministic=deterministic),
         "generator_name": GENERATOR_NAME,
         "generator_version": GENERATOR_VERSION,
+        "index_schema_version": INDEX_SCHEMA_VERSION,
         "source_mode": source_mode,
         "source_repo_url": str(runtime_info.get("repo_url") or runtime_info.get("path", "")),
         "source_branch": str(runtime_info.get("branch", "unknown")),
         "source_commit": str(runtime_info.get("commit", "unknown")),
-        "repository_count": 1 + len(ops_infos),
+        "source_repository_count": len(source_repositories),
+        "source_repositories": source_repositories,
     }
 
 
@@ -2537,12 +2579,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--keep-workspace", action="store_true")
     parser.add_argument("--with-source-docs", action="store_true")
     parser.add_argument("--with-compact", action="store_true")
+    parser.add_argument("--deterministic", action="store_true")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    workspace_root = Path(args.workspace_root).resolve()
+    workspace_root = run_workspace_root(Path(args.workspace_root).resolve(), keep_workspace=args.keep_workspace)
     global REFERENCE_DIR, ACL_DOC_PATH, ACLNN_DOC_PATH, ERROR_INDEX_PATH, INDEX_FILE, COMPACT_FILE
     REFERENCE_DIR = Path(args.out).resolve()
     REFERENCE_DIR.mkdir(parents=True, exist_ok=True)
@@ -2619,7 +2662,12 @@ def main() -> None:
                 )
             )
         records = consolidate_records(records)
-        meta = build_index_meta(runtime_info, [item for item in ops_infos if isinstance(item, dict)], source_mode=source_mode)
+        meta = build_index_meta(
+            runtime_info,
+            [item for item in ops_infos if isinstance(item, dict)],
+            source_mode=source_mode,
+            deterministic=args.deterministic,
+        )
         build_cann_error_index(meta)
         write_yaml_index(records, repo_infos, meta)
         if args.with_compact:
@@ -2647,6 +2695,7 @@ def main() -> None:
         cleanup(remove_legacy_docs=True)
         if not args.keep_workspace:
             safe_rmtree(workspace_root)
+            prune_empty_parents(workspace_root.parent, stop_at=SCRIPT_DIR)
 
 
 if __name__ == "__main__":

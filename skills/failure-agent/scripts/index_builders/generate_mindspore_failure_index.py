@@ -7,8 +7,10 @@ import argparse
 import ast
 import copy
 from datetime import datetime, timezone
+import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 from collections import defaultdict
@@ -26,6 +28,8 @@ DEFAULT_WORKSPACE_ROOT = SCRIPT_DIR / ".tmp" / "mindspore"
 DEFAULT_REMOTE_URL = "https://atomgit.com/mindspore/mindspore.git"
 GENERATOR_NAME = "generate_mindspore_failure_index.py"
 GENERATOR_VERSION = "1.0.0"
+INDEX_SCHEMA_VERSION = "1.1"
+DETERMINISTIC_TIMESTAMP = "1970-01-01T00:00:00+00:00"
 
 PYTHON_ROOT = Path("mindspore/python")
 MINT_ROOT = PYTHON_ROOT / "mindspore/mint"
@@ -2659,7 +2663,9 @@ def run_gen_ops(repo_root: Path) -> None:
     subprocess.run([sys.executable, str(repo_root / GEN_OPS)], check=True, cwd=repo_root)
 
 
-def current_timestamp() -> str:
+def current_timestamp(*, deterministic: bool = False) -> str:
+    if deterministic:
+        return DETERMINISTIC_TIMESTAMP
     return datetime.now(timezone.utc).isoformat()
 
 
@@ -2680,9 +2686,51 @@ def repo_branch_hint(repo_root: Path) -> str:
         return ""
 
 
+def _force_remove_readonly(func, path, _exc_info):
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
+
+
 def safe_rmtree(path: Path) -> None:
     if path.exists():
-        shutil.rmtree(path, ignore_errors=True)
+        shutil.rmtree(path, onerror=_force_remove_readonly)
+
+
+def prune_empty_parents(path: Path, *, stop_at: Path) -> None:
+    current = path
+    stop_at = stop_at.resolve()
+    while current.exists() and current.resolve() != stop_at:
+        try:
+            current.rmdir()
+        except OSError:
+            break
+        current = current.parent
+
+
+def run_workspace_root(base_root: Path, *, keep_workspace: bool) -> Path:
+    if keep_workspace:
+        return base_root
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+    return base_root / f"run-{stamp}"
+
+
+def build_source_repositories(
+    repo_root: Path,
+    *,
+    source_mode: str,
+    source_repo_url: str,
+    source_branch: str,
+    source_commit: str,
+) -> list[dict[str, str]]:
+    return [
+        {
+            "name": "mindspore",
+            "repo_url": source_repo_url or str(repo_root),
+            "branch": source_branch,
+            "commit": source_commit,
+            "source_type": source_mode,
+        }
+    ]
 
 
 def clone_remote_repo(remote_url: str, branch: str | None, workspace_root: Path) -> Path:
@@ -2706,17 +2754,17 @@ def clone_remote_repo(remote_url: str, branch: str | None, workspace_root: Path)
     return repo_root
 
 
-def prepare_repo(args: argparse.Namespace) -> tuple[Path, str, str, str]:
+def prepare_repo(args: argparse.Namespace) -> tuple[Path, str, str, str, Path | None]:
     if args.repo and args.branch:
         raise SystemExit("--repo and --branch cannot be used together.")
     if args.repo:
         repo_root = Path(args.repo).resolve()
         if not repo_root.exists():
             raise FileNotFoundError(f"MindSpore repo not found: {repo_root}")
-        return repo_root, "local", str(repo_root), repo_branch_hint(repo_root)
-    workspace_root = Path(args.workspace_root).resolve()
+        return repo_root, "local", str(repo_root), repo_branch_hint(repo_root), None
+    workspace_root = run_workspace_root(Path(args.workspace_root).resolve(), keep_workspace=args.keep_workspace)
     repo_root = clone_remote_repo(DEFAULT_REMOTE_URL, args.branch, workspace_root)
-    return repo_root, "remote", DEFAULT_REMOTE_URL, args.branch or repo_branch_hint(repo_root)
+    return repo_root, "remote", DEFAULT_REMOTE_URL, args.branch or repo_branch_hint(repo_root), workspace_root
 
 
 def remove_legacy_outputs(out_dir: Path) -> None:
@@ -2736,9 +2784,10 @@ def main() -> None:
     parser.add_argument("--with-evidence", action="store_true", help="Generate mint_api_evidence.yaml.")
     parser.add_argument("--with-review", action="store_true", help="Generate review queue and markdown outputs.")
     parser.add_argument("--with-rulebook", action="store_true", help="Generate mint_api_index_rulebook.md.")
+    parser.add_argument("--deterministic", action="store_true", help="Use deterministic metadata for reproducible outputs.")
     args = parser.parse_args()
 
-    repo_root, source_mode, source_repo_url, source_branch = prepare_repo(args)
+    repo_root, source_mode, source_repo_url, source_branch, workspace_root = prepare_repo(args)
     out_dir = Path(args.out).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -2757,19 +2806,28 @@ def main() -> None:
 
         inherit_construct_records(main_records, evidence_records)
         queue = build_review_queue(main_records)
-        generated_at = current_timestamp()
+        generated_at = current_timestamp(deterministic=args.deterministic)
         repo_commit = repo_commit_hint(repo_root)
         version_hint = mindspore_version_hint(repo_root)
+        source_repositories = build_source_repositories(
+            repo_root,
+            source_mode=source_mode,
+            source_repo_url=source_repo_url,
+            source_branch=source_branch,
+            source_commit=repo_commit,
+        )
         base_meta = {
             "generated_at": generated_at,
             "generator_name": GENERATOR_NAME,
             "generator_version": GENERATOR_VERSION,
+            "index_schema_version": INDEX_SCHEMA_VERSION,
             "source_mode": source_mode,
             "source_repo_url": source_repo_url,
             "source_branch": source_branch,
             "source_commit": repo_commit,
+            "source_repository_count": len(source_repositories),
+            "source_repositories": source_repositories,
             "mindspore_version_hint": version_hint,
-            "index_schema_version": "1.0",
             "generated_after_gen_ops": not args.skip_gen_ops,
         }
         main_payload = {
@@ -2828,8 +2886,9 @@ def main() -> None:
         summary = {"apis": len(main_records), "files": files}
         print(yaml.safe_dump(summary, allow_unicode=True, sort_keys=False))
     finally:
-        if source_mode == "remote" and not args.keep_workspace:
-            safe_rmtree(Path(args.workspace_root).resolve())
+        if source_mode == "remote" and workspace_root is not None and not args.keep_workspace:
+            safe_rmtree(workspace_root)
+            prune_empty_parents(workspace_root.parent, stop_at=SCRIPT_DIR)
 
 
 if __name__ == "__main__":

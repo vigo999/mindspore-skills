@@ -1,12 +1,39 @@
 meta:
-  generated_at: '2026-04-03T03:23:59.642103+00:00'
+  generated_at: '1970-01-01T00:00:00+00:00'
   generator_name: generate_cann_failure_index.py
   generator_version: 1.0.0
+  index_schema_version: '1.1'
   source_mode: remote
   source_repo_url: https://gitcode.com/cann/runtime.git
   source_branch: master
   source_commit: 441956b85c0d40fd6895369a527218a5122b7863
-  repository_count: 5
+  source_repository_count: 5
+  source_repositories:
+  - name: runtime
+    repo_url: https://gitcode.com/cann/runtime.git
+    branch: master
+    commit: 441956b85c0d40fd6895369a527218a5122b7863
+    source_type: cloned
+  - name: ops-nn
+    repo_url: https://gitcode.com/cann/ops-nn.git
+    branch: master
+    commit: 0fc3f4ac39f3d67092964266e6cde492e2fd4ada
+    source_type: cloned
+  - name: ops-math
+    repo_url: https://gitcode.com/cann/ops-math.git
+    branch: master
+    commit: d88730bb53f5ce252b35958937a0b88b52b83b70
+    source_type: cloned
+  - name: ops-transformer
+    repo_url: https://gitcode.com/cann/ops-transformer.git
+    branch: master
+    commit: 4cd41917fddd542b786d2c6f454127919227998d
+    source_type: cloned
+  - name: ops-cv
+    repo_url: https://gitcode.com/cann/ops-cv.git
+    branch: master
+    commit: 3120f81726c6a827ed7263a56bc41ecff151bda2
+    source_type: cloned
   api_count: 1021
 repositories:
 - name: ops-cv
@@ -17,10 +44,10 @@ repositories:
   commit: d88730bb53f5ce252b35958937a0b88b52b83b70
 - name: ops-nn
   branch: master
-  commit: 297ec91963995e6cb39ace57dc0e1e86a8f48a07
+  commit: 0fc3f4ac39f3d67092964266e6cde492e2fd4ada
 - name: ops-transformer
   branch: master
-  commit: 452a9d97ba816d9d9d9dd301667910106067d4fe
+  commit: 4cd41917fddd542b786d2c6f454127919227998d
 apis:
 - api_name: aclnnAbs
   doc_names:
@@ -53442,7 +53469,7 @@ apis:
   outputs:
   - name: output
     role: output
-    description: 公式中的 out，表示卷积输出。
+    description: 公式中的 output，表示卷积输出。
     dtype: BFLOAT16、FLOAT16、FLOAT、FLOAT8_E4M3FN、HIFLOAT8
     noncontiguous: 'yes'
     tensor_rank: 4..5
@@ -53535,7 +53562,7 @@ apis:
   outputs:
   - name: output
     role: output
-    description: 公式中的 out，表示卷积输出。
+    description: 公式中的 output，表示卷积输出。
     dtype: BFLOAT16、FLOAT16
     noncontiguous: 'yes'
     tensor_rank: '5'

@@ -1,3 +1,18 @@
+2026-04-03 | failure-agent | version 0.7.2
+Summary:
+- Combined the post-`0.7.0` knowledge-migration work into one commit-level update covering reference expansion, routing refinement, `mint` index boundary correction, and a final lightweight-reference review pass.
+
+Detailed changes:
+- Expanded the lightweight PTA and MindSpore diagnosis references and the curated fallback showcase without introducing a large historical casebook.
+- Updated `SKILL.md` to make stack-specific evidence collection and index-backed validation explicit while preserving the four-stage workflow and manual-only boundaries.
+- Clarified `mindspore` routing so `mint_api_index.yaml` and `mint_api_methodology.md` are primarily used for explicit `mindspore.mint`, `mindspore.mint.nn`, and `mindspore.mint.nn.functional` failures.
+- Reduced overlap between the `mint` entry guide and the general MindSpore / CANN deep-debug references so each lightweight reference keeps a narrower role.
+- Kept the existing PTA guidance, CANN index usage, fallback showcase, and manual-only / Factory-read-only boundaries unchanged.
+- Preserved repository-portable validation commands with no machine-local absolute paths.
+
+Validation:
+- `python -m pytest skills/failure-agent/tests -q`
+
 2026-04-03 | failure-agent | version 0.7.0
 Summary:
 - Introduced `reference/index/` and skill-local one-shot index builders so `failure-agent` can consume stable minimal YAML indexes without relying on repo-top docs or multi-script builder flows.
@@ -17,10 +32,10 @@ Detailed changes:
 - Kept `failure-agent` manual-only, Factory-read-only, and did not migrate external README, LICENSE, or adaptation docs.
 
 Validation:
-- `python D:\github\mindspore-skills\skills\failure-agent\scripts\index_builders\generate_cann_failure_index.py`
-- `python D:\github\mindspore-skills\skills\failure-agent\scripts\index_builders\generate_mindspore_failure_index.py --repo D:\github\model-diagnosis-agent\code\mindspore --skip-gen-ops`
-- `python D:\github\mindspore-skills\skills\failure-agent\scripts\index_builders\generate_mindspore_failure_index.py`
-- `python -m pytest D:\github\mindspore-skills\skills\failure-agent\tests -q`
+- `python skills/failure-agent/scripts/index_builders/generate_cann_failure_index.py`
+- `python skills/failure-agent/scripts/index_builders/generate_mindspore_failure_index.py --repo <local-mindspore-repo> --skip-gen-ops`
+- `python skills/failure-agent/scripts/index_builders/generate_mindspore_failure_index.py`
+- `python -m pytest skills/failure-agent/tests -q`
 - Result: 12 passed, 1 warning
 
 2026-03-21 | failure-agent | version 0.5.x summary
@@ -39,7 +54,7 @@ Series highlights:
 - `0.5.8`: added environment normalization and contrast-check guidance for both MindSpore and PTA triage.
 - `0.5.9`: merged the small upstream PyTorch operator reference into the main PTA operator guide.
 - `0.5.10`: renamed the MindSpore API guide to `mindspore-api-reference.md`.
-- `0.5.11`: renamed the MindSpore deep-debug guide to `mindspore-dianosis.md`.
+- `0.5.11`: renamed the MindSpore deep-debug guide to `mindspore-diagnosis.md`.
 - `0.5.12`: consolidated PTA fallback docs into the single `pta-diagnosis.md` reference.
 - `0.5.13`: aligned the remaining visible reference labels with the final local filenames.
 
@@ -47,12 +62,12 @@ Reference surface at the end of 0.5.x:
 - `failure-showcase.md`
 - `backend-diagnosis.md`
 - `mindspore-api-reference.md`
-- `mindspore-dianosis.md`
+- `mindspore-diagnosis.md`
 - `pta-diagnosis.md`
 - `cann-api-reference.md`
 
 Validation:
-- `python -m pytest d:\codex_workspace\mindspore-skills\skills\failure-agent\tests -q`
+- `python -m pytest skills/failure-agent/tests -q`
 - Result: 12 passed, 1 warning
 
 2026-03-19 | failure-agent | version 0.4.0
@@ -71,5 +86,5 @@ Detailed changes:
 - Updated skill.yaml description and bumped version from 0.3.0 to 0.4.0.
 - Rewrote structure and manifest tests and added behavior coverage for evidence/validation rules, MindSpore scoping/handoff, dual-stack routing, and B1.2 guidance alignment.
 Validation:
-- python -m pytest d:\codex_workspace\mindspore-skills\skills\failure-agent\tests -q
+- python -m pytest skills/failure-agent/tests -q
 - Result: 10 passed
