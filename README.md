@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Open skill library for **AI infra and model training workflows**.
+MindSpore Skills for **AI infra and model training workflows**.
 
 MindSpore Skills focuses on the high-frequency tasks around model training and migration, including **environment readiness, failure diagnosis, accuracy analysis, performance analysis, model migration, operator work, and algorithm adaptation**.
 
@@ -12,6 +12,10 @@ MindSpore Skills can be used in two ways:
 
 - as the capability layer behind **MindSpore CLI**
 - as reusable domain skills loaded by other **CLI agents**
+
+## Demo
+
+![Failure Agent Demo](docs/assets/faliure_agent.gif)
 
 ---
 

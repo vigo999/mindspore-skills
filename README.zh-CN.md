@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-面向 **AI 基础设施与模型训练工作流** 的开放技能库。
+面向 **AI 基础设施与模型训练工作流** 的 MindSpore Skills。
 
 MindSpore Skills 聚焦于模型训练与迁移周边的高频任务，包括 **环境就绪性检查、故障诊断、精度分析、性能分析、模型迁移、算子相关工作与算法适配**。
 
@@ -12,6 +12,10 @@ MindSpore Skills 主要有两种使用方式：
 
 - 作为 **MindSpore CLI** 背后的能力层
 - 作为其他 **CLI agent** 可加载的可复用领域技能
+
+## Demo
+
+![Failure Agent Demo](docs/assets/faliure_agent.gif)
 
 ---
 
