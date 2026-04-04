@@ -2,20 +2,22 @@
 description: Route to MindSpore migration tools (HF models, third-party repos)
 ---
 
-# MindSpore Migration Tools
+# Migrate
 
-Select a migration type:
+Use this as the top-level migration entrypoint.
 
-| Type | Command | Description |
-|------|---------|-------------|
-| **Models and Repos** | `/migrate-agent` | Migrate Hugging Face models, diffusers pipelines, and generic PyTorch repos to MindSpore |
+Route internally to `migrate-agent` after classifying the source:
+
+- Hugging Face Transformers model or repo
+- Hugging Face Diffusers pipeline or repo
+- generic PyTorch repository
 
 ## Usage
 
-```
-/migrate hf       -> routes to /migrate-agent
-/migrate model    -> routes to /migrate-agent
-/migrate repo     -> routes to /migrate-agent
+```text
+/migrate migrate this Hugging Face Transformers Qwen3 model to MindSpore
+/migrate port this PyTorch repo to MindSpore
 ```
 
-If no type specified, ask user what they want to migrate.
+If the user does not specify what they want to migrate, ask for the source repo
+or model family before routing.
