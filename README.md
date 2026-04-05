@@ -8,7 +8,7 @@
 
 :x: **Problem:** Qwen3 training crashed on Ascend 910B with gradient checkpointing error
 
-:keyboard: **Type:** `/fix "training crashed with gradient checkpointing error"`
+:keyboard: **Type:** `/fix "according to the error, fix the issue"`
 
 :white_check_mark: **Result:** failure-agent reads the logs, locates the root cause, and applies the fix automatically
 

@@ -8,7 +8,7 @@
 
 :x: **问题：** Qwen3 在昇腾 910B 上训练崩溃，报 gradient checkpointing 错误
 
-:keyboard: **输入：** `/fix "training crashed with gradient checkpointing error"`
+:keyboard: **输入：** `/fix "according to the error, fix the issue"`
 
 :white_check_mark: **结果：** failure-agent 自动读取日志、定位根因并修复
 
