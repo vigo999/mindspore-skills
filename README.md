@@ -15,20 +15,13 @@ MindSpore Skills can be used in two ways:
 
 ## Demo
 
-<table>
-  <tr>
-    <td align="center"><b>failure-agent</b></td>
-    <td align="center"><b>accuracy-agent</b></td>
-  </tr>
-  <tr>
-    <td><img src="docs/assets/failure_agent.gif" width="420" /></td>
-    <td><img src="docs/assets/accuracy_agent.gif" width="420" /></td>
-  </tr>
-  <tr>
-    <td align="center">Diagnose and fix a Qwen3 training crash using the failure-agent skill</td>
-    <td align="center">Detect and resolve accuracy regression during Qwen3 training using the accuracy-agent skill</td>
-  </tr>
-</table>
+**failure-agent** — Diagnose and fix a Qwen3 training crash using the failure-agent skill
+
+<img src="docs/assets/failure_agent.gif" width="720" />
+
+**accuracy-agent** — Detect and resolve accuracy regression during Qwen3 training using the accuracy-agent skill
+
+<img src="docs/assets/accuracy_agent.gif" width="720" />
 
 ---
 
