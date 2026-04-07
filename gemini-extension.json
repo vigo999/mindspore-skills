@@ -1,57 +1,47 @@
 {
-  "name": "mindspore-skills",
-  "description": "MindSpore operator development and model migration skills",
-  "version": "1.1.0",
-  "skills": [
-    {
-      "name": "api-helper",
-      "description": "Find API call chains and operator wiring in MindSpore codebase",
-      "path": "skills/api-helper/SKILL.md"
-    },
-    {
-      "name": "cpu-plugin-builder",
-      "description": "Build CPU operators via ATen/libtorch adaptation",
-      "path": "skills/cpu-plugin-builder/SKILL.md"
-    },
-    {
-      "name": "cpu-native-builder",
-      "description": "Build native CPU kernels with Eigen/SLEEF",
-      "path": "skills/cpu-native-builder/SKILL.md"
-    },
-    {
-      "name": "gpu-builder",
-      "description": "Build GPU operators with CUDA",
-      "path": "skills/gpu-builder/SKILL.md"
-    },
-    {
-      "name": "npu-builder",
-      "description": "Build NPU operators for Huawei Ascend",
-      "path": "skills/npu-builder/SKILL.md"
-    },
-    {
-      "name": "mindspore-aclnn-operator-devflow",
-      "description": "End-to-end ACLNN operator adaptation workflow for MindSpore Ascend",
-      "path": "skills/mindspore-aclnn-operator-devflow/SKILL.md"
-    },
-    {
-      "name": "hf-diffusers-migrate",
-      "description": "Migrate HF diffusers models to mindone.diffusers",
-      "path": "skills/hf-diffusers-migrate/SKILL.md"
-    },
-    {
-      "name": "hf-transformers-migrate",
-      "description": "Migrate Hugging Face transformers models to mindone.transformers",
-      "path": "skills/hf-transformers-migrate/SKILL.md"
-    },
-    {
-      "name": "hf-transformers-migrate-test",
-      "description": "Generate minimal MindOne transformer tests for migrated models",
-      "path": "skills/hf-transformers-migrate-test/SKILL.md"
-    },
-    {
-      "name": "model-migrate",
-      "description": "Migrate PyTorch repos to MindSpore",
-      "path": "skills/model-migrate/SKILL.md"
-    }
-  ]
+    "name":  "mindspore-skills",
+    "description":  "MindSpore operator development and model migration skills",
+    "version":  "0.1.0",
+    "skills":  [
+                   {
+                       "name":  "api-helper",
+                       "description":  "Find API call chains and operator wiring in MindSpore codebase",
+                       "path":  "skills/api-helper/SKILL.md"
+                   },
+                   {
+                       "name":  "migrate-agent",
+                       "description":  "Top-level model migration entry that analyzes the source repo, selects the correct migration route, and verifies the result",
+                       "path":  "skills/migrate-agent/SKILL.md"
+                   },
+                   {
+                       "name":  "operator-agent",
+                       "description":  "Build torch or mindspore operators through custom-access or native-framework integration",
+                       "path":  "skills/operator-agent/SKILL.md"
+                   },
+                   {
+                       "name":  "readiness-agent",
+                       "description":  "Certify whether a local single-machine workspace is runnable for the intended training or inference task",
+                       "path":  "skills/readiness-agent/SKILL.md"
+                   },
+                   {
+                       "name":  "algorithm-agent",
+                       "description":  "Adapt a paper feature or released reference implementation into an existing model codebase and prepare the patch for readiness validation",
+                       "path":  "skills/algorithm-agent/SKILL.md"
+                   },
+                   {
+                       "name":  "accuracy-agent",
+                       "description":  "Diagnose accuracy regressions, drift, wrong results, and cross-platform mismatch after successful execution",
+                       "path":  "skills/accuracy-agent/SKILL.md"
+                   },
+                   {
+                       "name":  "failure-agent",
+                       "description":  "Diagnose MindSpore and PTA training and runtime failures with evidence-backed root-cause validation",
+                       "path":  "skills/failure-agent/SKILL.md"
+                   },
+                   {
+                       "name":  "performance-agent",
+                       "description":  "Diagnose throughput, latency, memory, utilization, dataloader, and communication bottlenecks after the workload already runs",
+                       "path":  "skills/performance-agent/SKILL.md"
+                   }
+               ]
 }

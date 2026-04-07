@@ -128,18 +128,18 @@ Security and privacy:
 ```json
 {
   "schema_version": "1.0.0",
-  "skill": "cpu-plugin-builder",
-  "run_id": "20260302_131500_plugin_add",
+  "skill": "operator-agent",
+  "run_id": "20260324_131500_op_build",
   "status": "success",
-  "start_time": "2026-03-02T13:15:00Z",
-  "end_time": "2026-03-02T13:17:00Z",
+  "start_time": "2026-03-24T13:15:00Z",
+  "end_time": "2026-03-24T13:17:00Z",
   "duration_sec": 120,
   "steps": [
     {"name": "build", "status": "success"},
     {"name": "verify", "status": "success"}
   ],
   "logs": ["logs/run.log", "logs/build.log", "logs/verify.log"],
-  "artifacts": ["artifacts/plugin_add.so"],
+  "artifacts": ["artifacts/op_build.so"],
   "env_ref": "meta/env.json",
   "inputs_ref": "meta/inputs.json"
 }

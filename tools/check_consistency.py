@@ -12,10 +12,12 @@ README = ROOT / "README.md"
 AGENTS = ROOT / "AGENTS.md"
 GEMINI = ROOT / "gemini-extension.json"
 
-# Commands that are routers only and do not require a skill.
+# Public slash commands are a small curated surface and do not need matching
+# skill directories.
 ROUTER_COMMANDS = {
+    "diagnose",
+    "fix",
     "migrate",
-    "hf-migrate",
 }
 
 
@@ -95,10 +97,6 @@ def main():
     gemini_skills = parse_gemini_skills()
 
     issues = []
-
-    missing_commands = sorted(skills - commands)
-    if missing_commands:
-        issues.append(("skills_missing_commands", missing_commands))
 
     extra_commands = sorted((commands - skills) - ROUTER_COMMANDS)
     if extra_commands:

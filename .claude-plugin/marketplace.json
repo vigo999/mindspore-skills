@@ -5,19 +5,19 @@
   },
   "metadata": {
     "description": "Agent Skills for MindSpore deep learning framework development including CPU operator building, testing, and optimization",
-    "version": "1.0.0",
-    "repository": "https://github.com/vigo999/mindspore-skills"
+    "version": "0.1.0",
+    "repository": "https://github.com/mindspore-lab/mindspore-skills"
   },
   "plugins": [
     {
-      "name": "mscode",
+      "name": "ms",
       "source": "./",
       "description": "Complete collection of MindSpore development skills - CPU/GPU/NPU operator building, testing, optimization, and model migration from PyTorch/HuggingFace",
       "author": {
         "name": "MindSpore"
       },
-      "homepage": "https://github.com/vigo999/mindspore-skills",
-      "repository": "https://github.com/vigo999/mindspore-skills",
+      "homepage": "https://github.com/mindspore-lab/mindspore-skills",
+      "repository": "https://github.com/mindspore-lab/mindspore-skills",
       "license": "Apache-2.0",
       "keywords": [
         "mindspore",

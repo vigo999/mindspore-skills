@@ -1,8 +1,66 @@
-# MindSpore Skills
+# MindSpore Model Agent
 
-MindSpore development skills for AI coding agents. Build CPU/GPU/NPU operators and migrate models with guided workflows.
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-Compatible with **Claude Code**, **OpenCode**, **Gemini CLI**, and **Codex**.
+MindSpore Model Agent is a training-focused AI agent solution for the MindSpore ecosystem. It is designed for the high-frequency engineering work around model training, where users need more than general code generation and need help with domain-specific training tasks.
+
+It is built on two closely related parts:
+
+- `mindspore-skills`: the domain capability layer for model training and debugging tasks. It provides reusable skills for readiness checking, failure diagnosis, accuracy analysis, performance analysis, model migration, algorithm adaptation, and operator implementation. These skills can work not only with MindSpore Model Agent, but also with other agentic CLI environments such as Claude Code, OpenCode, and Codex.
+- [`mindspore-cli`](https://github.com/mindspore-lab/mindspore-cli): the official CLI of MindSpore Model Agent. It provides better integration with related skills and is optimized for model training use cases, offering a more unified end-to-end experience for training-oriented workflows.
+
+## What's New in v0.1.0
+
+- Initial public release of MindSpore Model Agent
+- Introduced `mindspore-skills` as the reusable capability layer for model training and debugging tasks
+- Introduced `mindspore-cli` as the official CLI optimized for model training workflows
+
+## Demos
+
+**failure-agent**
+
+:x: **Problem:** Qwen3 training crashed on Ascend 910B with gradient checkpointing error
+
+:keyboard: **Type:** `/fix "according to the error, fix the issue"`
+
+:white_check_mark: **Result:** failure-agent reads the logs, locates the root cause, and applies the fix automatically
+
+<img src="docs/assets/failure_agent.gif" width="720" />
+
+**accuracy-agent**
+
+:x: **Problem:** Qwen3 inference output has precision errors after switching to Ascend
+
+:keyboard: **Type:** `/fix "qwen3 infer has accuracy issue, check run_01.log"`
+
+:white_check_mark: **Result:** accuracy-agent compares results, traces the numerical drift, and fixes it automatically
+
+<img src="docs/assets/accuracy_agent.gif" width="720" />
+
+**algorithm-agent**
+
+:x: **Problem:** Need to integrate MHC (Manifold-constrained Hyperparameters) into Qwen3 on Ascend 910B
+
+:keyboard: **Type:** `/integrate "add MHC feature into Qwen3 model"`
+
+:white_check_mark: **Result:** algorithm-agent analyzes the model structure, integrates MHC into the decoder layer, updates config, adds tests, and verifies the result
+
+<img src="docs/assets/algorithm_agent.gif" width="720" />
+
+## Key Capabilities
+
+- workspace readiness checking
+- failure diagnosis
+- accuracy analysis
+- performance analysis
+- model migration
+- algorithm adaptation
+- operator implementation
+
+## Repositories
+
+- `mindspore-cli`: the official CLI interface for MindSpore Model Agent
+- `mindspore-skills`: the reusable skill layer behind MindSpore Model Agent
 
 ## Installation
 
@@ -10,203 +68,75 @@ Compatible with **Claude Code**, **OpenCode**, **Gemini CLI**, and **Codex**.
 
 Register the marketplace and install:
 
-```
-/plugin marketplace add vigo999/mindspore-skills
-/plugin install mscode@mindspore-skills
+```bash
+/plugin marketplace add mindspore-lab/mindspore-skills
+/plugin install ms@mindspore-skills
 ```
 
-Then use slash command:
+Then use slash commands:
 
-```
-/mscode:cpu-plugin-builder
-/mscode:cpu-native-builder
-/mscode:gpu-builder
-/mscode:hf-diffusers-migrate
-/mscode:hf-migrate
-/mscode:hf-transformers-migrate
-/mscode:hf-transformers-migrate-test
-/mscode:migrate
-/mscode:model-migrate
-/mscode:npu-builder
-/mscode:mindspore-aclnn-operator-devflow
-/mscode:api-helper
+```bash
+/ms:diagnose
+/ms:fix
+/ms:migrate
 ```
 
 ### OpenCode
 
-Clone to your global config:
+OpenCode loads custom commands from `commands/` and skills from `skills/`.
+
+For a project-local install:
 
 ```bash
-git clone https://github.com/vigo999/mindspore-skills.git ~/.config/opencode/mindspore-skills
-ln -s ~/.config/opencode/mindspore-skills/skills ~/.config/opencode/skills
-ln -s ~/.config/opencode/mindspore-skills/commands ~/.config/opencode/commands
+git clone https://github.com/mindspore-lab/mindspore-skills.git .opencode
 ```
 
-Or for a specific project:
+This gives OpenCode the expected layout:
+
+```text
+.opencode/commands/
+.opencode/skills/
+```
+
+For a global install, copy or symlink the contents into your existing OpenCode directories instead of replacing the whole directory:
 
 ```bash
-git clone https://github.com/vigo999/mindspore-skills.git .opencode
+git clone https://github.com/mindspore-lab/mindspore-skills.git ~/.config/opencode/mindspore-skills
+mkdir -p ~/.config/opencode/skills ~/.config/opencode/commands
+ln -s ~/.config/opencode/mindspore-skills/skills/* ~/.config/opencode/skills/
+ln -s ~/.config/opencode/mindspore-skills/commands/* ~/.config/opencode/commands/
 ```
 
 Then in OpenCode:
 
+```bash
+/diagnose
+/fix
+/migrate
 ```
-/cpu-plugin-builder
-```
-
-See [OpenCode Skills docs](https://opencode.ai/docs/skills) for more details.
 
 ### Gemini CLI
 
 Install as an extension:
 
 ```bash
-gemini extensions install https://github.com/vigo999/mindspore-skills.git --consent
+gemini extensions install https://github.com/mindspore-lab/mindspore-skills.git --consent
 ```
 
-Or from local clone:
+Or from a local clone:
 
 ```bash
-git clone https://github.com/vigo999/mindspore-skills.git
+git clone https://github.com/mindspore-lab/mindspore-skills.git
 gemini extensions install ./mindspore-skills --consent
 ```
 
-See [Gemini CLI extensions docs](https://geminicli.com/docs/extensions/) for more details.
-
 ### Codex
 
-Clone to your project root:
+Codex does not install slash commands from this repository. It follows the instructions it discovers from `AGENTS.md` files in the active project.
 
-```bash
-git clone https://github.com/vigo999/mindspore-skills.git .mindspore-skills
-```
+If you are working in this repository, no extra install step is needed. Open the repo in Codex and it will read `AGENTS.md`.
 
-Codex reads `AGENTS.md` automatically. Verify with:
-
-```bash
-codex "Summarize the MindSpore skills available."
-```
-
-See [Codex AGENTS guide](https://developers.openai.com/codex/guides/agents-md) for more details.
-
-## Available Skills
-
-### Operator Development
-
-| Skill | Description |
-|-------|-------------|
-| `api-helper` | Find API call chains and operator wiring in MindSpore codebase |
-| `cpu-plugin-builder` | Build CPU operators via ATen/libtorch adaptation |
-| `cpu-native-builder` | Build native CPU kernels with Eigen/SLEEF |
-| `gpu-builder` | Build GPU operators with CUDA |
-| `npu-builder` | Build NPU operators for Huawei Ascend |
-| `mindspore-aclnn-operator-devflow` | End-to-end ACLNN operator adaptation workflow for MindSpore Ascend |
-
-### Model Migration
-
-| Skill | Description |
-|-------|-------------|
-| `hf-diffusers-migrate` | Migrate HF diffusers models to mindone.diffusers |
-| `hf-transformers-migrate` | Migrate Hugging Face transformers models to mindone.transformers |
-| `hf-transformers-migrate-test` | Generate minimal MindOne transformer tests for migrated models |
-| `model-migrate` | Migrate PyTorch repos to MindSpore |
-
-## Available Commands
-
-### Operator Development
-
-| Command | Description |
-|---------|-------------|
-| `/api-helper` | API chain discovery workflow |
-| `/cpu-plugin-builder` | ATen adaptation workflow |
-| `/cpu-native-builder` | Native kernel workflow |
-| `/gpu-builder` | CUDA kernel workflow |
-| `/npu-builder` | Ascend NPU workflow |
-| `/mindspore-aclnn-operator-devflow` | ACLNN deep development workflow |
-
-### Model Migration
-
-| Command | Description |
-|---------|-------------|
-| `/migrate` | Migration router (HF/third-party), routing only |
-| `/hf-migrate` | HF library router (diffusers/transformers), routing only |
-| `/hf-diffusers-migrate` | HF diffusers migration workflow |
-| `/hf-transformers-migrate` | HF transformers migration workflow |
-| `/hf-transformers-migrate-test` | HF transformers test generation for migrated models |
-| `/model-migrate` | PyTorch repo migration workflow |
-
-## Usage Examples
-
-### Build a CPU operator
-
-```
-/cpu-plugin-builder
-
-> Help me implement the linspace operator for MindSpore CPU
-```
-
-### Run minimal public example
-
-```bash
-bash examples/cpu/plugin_add/run.sh
-```
-
-See expected result contract in `examples/cpu/plugin_add/expected.md`.
-
-## Contract and Tests
-
-- Contract docs:
-  - `docs/concepts/skills-contract.md`
-  - `docs/concepts/artifacts-and-reporting.md`
-- Cross-skill contract tests: `tests/contract/`
-- Skill-specific tests: `skills/<skill>/tests/`
-
-## Repository Structure
-
-```
-mindspore-skills/
-├── .claude-plugin/          # Claude Code plugin config
-├── commands/                # Slash commands
-│   ├── api-helper.md        # API chain discovery
-│   ├── migrate.md           # Migration router
-│   ├── hf-migrate.md        # HF library router
-│   └── ...
-├── skills/                  # Skill definitions
-│   ├── cpu-plugin-builder/  # ATen/libtorch operators
-│   ├── cpu-native-builder/  # Native CPU kernels
-│   ├── gpu-builder/         # CUDA operators
-│   ├── npu-builder/         # Ascend NPU operators
-│   ├── mindspore-aclnn-operator-devflow/ # ACLNN deep development workflow
-│   ├── hf-diffusers-migrate/   # HF diffusers migration
-│   ├── hf-transformers-migrate/ # HF transformers migration
-│   ├── hf-transformers-migrate-test/ # HF transformers test generation after migration
-│   └── model-migrate/       # PyTorch repo migration
-├── AGENTS.md                # Codex instructions
-└── gemini-extension.json    # Gemini CLI config
-```
-
-## Contributing
-
-Contributions are welcome. Please submit a pull request.
-
-When adding a new skill:
-1. Add `skills/<skill-name>/SKILL.md` with matching frontmatter and directory name
-2. Add a slash command in `commands/<command-name>.md` if needed
-3. Update `AGENTS.md` (skill table + activation triggers)
-4. Update `README.md` (skill list and commands)
-5. Update `gemini-extension.json` with name/path/description
-6. Update `.claude-plugin/marketplace.json` if skills or metadata changed
-
-When modifying an existing skill:
-1. Update `skills/<skill-name>/SKILL.md` and any referenced files
-2. Refresh `AGENTS.md` triggers if scope/keywords changed
-3. Update `README.md` if descriptions or commands changed
-4. Update `gemini-extension.json` if name/path/description changed
-
-tools:
-- Run `python tools/check_consistency.py` before submit
-- (Optional) Install git hooks with `python tools/install_git_hooks.py`
-- Tip: set up hooks with `make hooks` (see Makefile).
+If you want to reuse this guidance in another project, copy or adapt the relevant sections into that project's `AGENTS.md`.
 
 ## License
 

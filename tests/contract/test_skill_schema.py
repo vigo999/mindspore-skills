@@ -15,9 +15,9 @@ def test_skill_manifest_template_compatible_with_schema():
     schema = json.loads(schema_path.read_text())
     content = tmpl_path.read_text()
     content = (
-        content.replace("{{ skill_name }}", "cpu-plugin-builder")
-        .replace("{{ display_name }}", "CPU Plugin Builder")
-        .replace("{{ description }}", "Build CPU plugin operators.")
+        content.replace("{{ skill_name }}", "readiness-agent")
+        .replace("{{ display_name }}", "Readiness Agent")
+        .replace("{{ description }}", "Check whether a single-machine training workspace is ready to run.")
     )
     manifest = yaml.safe_load(content)
     jsonschema.validate(instance=manifest, schema=schema)
