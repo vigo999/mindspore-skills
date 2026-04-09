@@ -31,6 +31,8 @@ The internal verdict must preserve:
 - whether the run is still awaiting user confirmation or already validated
 - the current per-field confirmation step and its numbered options
 - near-launch validation checks
+- framework compatibility details, including installed versions, local-table
+  status, and recommended package specs when available
 - environment candidates and ranking
 - HF cache layout and remote-asset evidence when detected
 - readiness lock and confirmation step references

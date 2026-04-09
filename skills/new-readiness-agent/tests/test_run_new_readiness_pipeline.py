@@ -76,6 +76,19 @@ def test_pipeline_requires_confirmation_before_final_verdict(tmp_path: Path):
     assert verdict["current_confirmation"]["field"] == "launcher"
     assert summary["confirmation_required"] is True
     assert current_field(summary) == "launcher"
+    assert summary["artifact_refs"] == {
+        "verdict": "meta/readiness-verdict.json",
+        "lock": "artifacts/workspace-readiness.lock.json",
+        "confirmation": "artifacts/confirmation-step.json",
+    }
+    assert (output_dir / "meta" / "readiness-verdict.json").exists()
+    assert (output_dir / "artifacts" / "workspace-readiness.lock.json").exists()
+    assert (output_dir / "artifacts" / "confirmation-step.json").exists()
+    assert not (output_dir / "report.json").exists()
+    assert not (output_dir / "report.md").exists()
+    assert not (output_dir / "meta" / "env.json").exists()
+    assert not (output_dir / "meta" / "inputs.json").exists()
+    assert not (output_dir / "logs" / "run.log").exists()
     assert (workspace / "runs" / "latest" / "new-readiness-agent" / "workspace-readiness.lock.json").exists()
 
 
@@ -92,7 +105,7 @@ def test_pipeline_warns_but_can_run_and_writes_latest_cache(tmp_path: Path, fake
     (cann_root / "version.cfg").write_text("version=8.5.0\n", encoding="utf-8")
     output_dir = tmp_path / "out"
 
-    run_pipeline(
+    completed = run_pipeline(
         "--working-dir",
         str(workspace),
         "--output-dir",
@@ -121,15 +134,51 @@ def test_pipeline_warns_but_can_run_and_writes_latest_cache(tmp_path: Path, fake
     )
 
     verdict = json.loads((output_dir / "meta" / "readiness-verdict.json").read_text(encoding="utf-8"))
+    summary = stdout_payload(completed)
+    report = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
     latest_root = workspace / "runs" / "latest" / "new-readiness-agent"
     latest_lock = json.loads((latest_root / "workspace-readiness.lock.json").read_text(encoding="utf-8"))
     confirmation = json.loads((latest_root / "confirmation-latest.json").read_text(encoding="utf-8"))
 
     assert verdict["status"] == "WARN"
     assert verdict["can_run"] is True
+    assert summary["artifact_refs"] == {
+        "verdict": "meta/readiness-verdict.json",
+        "lock": "artifacts/workspace-readiness.lock.json",
+        "confirmation": "artifacts/confirmation-step.json",
+        "report": "report.json",
+        "markdown": "report.md",
+        "env": "meta/env.json",
+        "inputs": "meta/inputs.json",
+        "run_log": "logs/run.log",
+    }
+    assert report["artifacts"] == [
+        "report.md",
+        "meta/env.json",
+        "meta/inputs.json",
+        "meta/readiness-verdict.json",
+        "artifacts/workspace-readiness.lock.json",
+        "artifacts/confirmation-step.json",
+    ]
+    assert report["logs"] == ["logs/run.log"]
+    assert (output_dir / "report.md").exists()
+    assert (output_dir / "meta" / "env.json").exists()
+    assert (output_dir / "meta" / "inputs.json").exists()
+    assert (output_dir / "logs" / "run.log").exists()
     assert latest_lock["launcher"] == "torchrun"
     assert latest_lock["selected_python"] == str(fake_selected_python)
     assert confirmation["current_confirmation"] is None
+    assert verdict["latest_cache_ref"] == {
+        "root": "runs/latest/new-readiness-agent",
+        "lock": "runs/latest/new-readiness-agent/workspace-readiness.lock.json",
+        "confirmation": "runs/latest/new-readiness-agent/confirmation-latest.json",
+        "run_ref": "runs/latest/new-readiness-agent/run-ref.json",
+    }
+    compatibility_check = check_by_id(verdict, "framework-compatibility")
+    assert compatibility_check["status"] == "warn"
+    assert "Installed:" in compatibility_check["summary"]
+    assert "Recommended:" in compatibility_check["summary"] or "Expected one of:" in compatibility_check["summary"]
+    assert compatibility_check["details"]["installed_versions"]["torch"] == "1.0.0"
 
 
 def test_pipeline_offers_catalog_options_when_workspace_has_no_runtime_evidence(tmp_path: Path):

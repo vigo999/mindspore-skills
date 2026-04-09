@@ -89,6 +89,7 @@ def main() -> int:
         state=state,
     )
     verdict = bundle["verdict"]
+    artifact_refs = bundle.get("artifact_refs") if isinstance(bundle.get("artifact_refs"), dict) else {}
 
     print(
         json.dumps(
@@ -103,6 +104,8 @@ def main() -> int:
                 "output_dir": str(output_dir),
                 "confirmation_step_ref": "artifacts/confirmation-step.json",
                 "current_confirmation": verdict["current_confirmation"] if verdict["confirmation_required"] else None,
+                "artifact_refs": artifact_refs,
+                "latest_cache_ref": verdict.get("latest_cache_ref"),
             },
             indent=2,
         )

@@ -2,7 +2,7 @@
 import os
 import re
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Pattern, Tuple
 
 from asset_schema import (
     dedupe_asset_candidates,
@@ -159,7 +159,7 @@ def _matching_cache_dirs(base_root: Path, repo_id: str, kind: str) -> List[Path]
     return matches
 
 
-def _callsite_matches(pattern: re.Pattern[str], text: str, entry_script: Path) -> List[Dict[str, str]]:
+def _callsite_matches(pattern: Pattern[str], text: str, entry_script: Path) -> List[Dict[str, str]]:
     results: List[Dict[str, str]] = []
     lines = text.splitlines()
     for index, line in enumerate(lines, start=1):

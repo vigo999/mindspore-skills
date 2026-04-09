@@ -1153,6 +1153,62 @@ def make_check(check_id: str, status: str, summary: str, evidence: Optional[List
     return payload
 
 
+def summarize_framework_compatibility(compatibility: Dict[str, object]) -> Tuple[str, List[str], Dict[str, object]]:
+    status = str(compatibility.get("status") or "unresolved")
+    reason = str(compatibility.get("reason") or "").strip()
+    installed_versions = compatibility.get("installed_versions") if isinstance(compatibility.get("installed_versions"), dict) else {}
+    recommended_specs = [str(item) for item in (compatibility.get("recommended_package_specs") or []) if str(item).strip()]
+    compatible_rows = compatibility.get("compatible_rows") if isinstance(compatibility.get("compatible_rows"), list) else []
+    matched_row = compatibility.get("matched_row") if isinstance(compatibility.get("matched_row"), dict) else None
+
+    installed_tokens = [f"{name}={value}" for name, value in installed_versions.items() if value]
+    compatible_tokens: List[str] = []
+    for row in compatible_rows:
+        if not isinstance(row, dict):
+            continue
+        row_tokens = []
+        for key in ("mindspore", "torch", "torch_npu"):
+            value = row.get(key)
+            if value:
+                row_tokens.append(f"{key}=={value}")
+        branch = row.get("branch")
+        if branch:
+            row_tokens.append(f"branch={branch}")
+        if row_tokens:
+            compatible_tokens.append(", ".join(row_tokens))
+
+    if status == "compatible":
+        summary = reason or "framework versions match the local compatibility table"
+    elif status == "incompatible":
+        expected = "; ".join(compatible_tokens[:3]) if compatible_tokens else ", ".join(recommended_specs)
+        expected_suffix = f" Expected one of: {expected}." if expected else ""
+        installed_suffix = f" Installed: {', '.join(installed_tokens)}." if installed_tokens else ""
+        summary = f"{reason}{installed_suffix}{expected_suffix}".strip()
+    else:
+        installed_suffix = f" Installed: {', '.join(installed_tokens)}." if installed_tokens else ""
+        recommended_suffix = f" Recommended: {', '.join(recommended_specs)}." if recommended_specs else ""
+        summary = f"{reason}{installed_suffix}{recommended_suffix}".strip()
+
+    evidence = []
+    if installed_tokens:
+        evidence.append("installed " + ", ".join(installed_tokens))
+    if recommended_specs:
+        evidence.append("recommended " + ", ".join(recommended_specs))
+    if compatible_tokens:
+        evidence.append("compatible rows " + "; ".join(compatible_tokens[:3]))
+
+    details: Dict[str, object] = {
+        "compatibility_status": status,
+        "reference_status": compatibility.get("reference_status"),
+        "installed_versions": installed_versions,
+        "recommended_package_specs": recommended_specs,
+        "matched_row": matched_row,
+        "compatible_rows": compatible_rows,
+        "reason": compatibility.get("reason"),
+    }
+    return summary or f"framework compatibility status: {status}", evidence, details
+
+
 def executable_exists(command_name: str) -> bool:
     return bool(shutil.which(command_name))
 
@@ -1648,10 +1704,11 @@ def validate_profile(scan: Dict[str, object], profile: Dict[str, object], root: 
     if str(profile.get("framework")) in {"mindspore", "pta"}:
         compatibility = assess_installed_framework_compatibility(str(profile.get("framework")), cann_version_info.get("cann_version"), selected_env.get("python_version") if selected_env else None, {name: package_versions.get(name) for name in FRAMEWORK_PACKAGES.get(str(profile.get("framework")), [])})
         compat_status = compatibility.get("status")
+        compat_summary, compat_evidence, compat_details = summarize_framework_compatibility(compatibility)
         if compat_status == "compatible":
-            checks.append(make_check("framework-compatibility", "ok", compatibility.get("reason") or "framework versions match the local compatibility table"))
+            checks.append(make_check("framework-compatibility", "ok", compat_summary, evidence=compat_evidence, details=compat_details))
         elif compat_status:
-            checks.append(make_check("framework-compatibility", "warn", compatibility.get("reason") or f"framework compatibility status: {compat_status}"))
+            checks.append(make_check("framework-compatibility", "warn", compat_summary, evidence=compat_evidence, details=compat_details))
 
     fields_needing_confirmation = [name for name, item in (profile.get("confirmed_fields") or {}).items() if isinstance(item, dict) and item.get("value") not in {None, ""} and not item.get("confirmed", False)]
     if fields_needing_confirmation:

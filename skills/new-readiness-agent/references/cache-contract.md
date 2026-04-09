@@ -4,6 +4,19 @@ Run-scoped artifacts live under:
 
 - `runs/<run_id>/out/`
 
+Run-scoped writing is phase-sensitive:
+
+- `NEEDS_CONFIRMATION` runs only persist the lightweight continuation state:
+  - `meta/readiness-verdict.json`
+  - `artifacts/workspace-readiness.lock.json`
+  - `artifacts/confirmation-step.json`
+- validated runs additionally persist the full diagnostic bundle:
+  - `report.json`
+  - `report.md`
+  - `logs/run.log`
+  - `meta/env.json`
+  - `meta/inputs.json`
+
 Workspace latest cache lives under:
 
 - `runs/latest/new-readiness-agent/`

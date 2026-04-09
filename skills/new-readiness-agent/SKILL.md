@@ -133,6 +133,8 @@ At minimum validate:
 - Python version and path
 - launcher readiness
 - framework importability
+- framework compatibility details, including installed package versions, local
+  compatibility-table status, and recommended package specs when available
 - runtime dependency importability
 - config asset satisfaction
 - model, dataset, and checkpoint asset satisfaction
@@ -165,16 +167,19 @@ When rerunning after a user choice, pass the selected value back through
 Write reusable machine-readable artifacts for this run and for the workspace
 latest cache.
 
-Run-scoped artifacts must include:
+Run-scoped artifacts are phase-sensitive:
 
-- `report.json`
-- `report.md`
-- `logs/run.log`
-- `meta/env.json`
-- `meta/inputs.json`
-- `meta/readiness-verdict.json`
-- `artifacts/workspace-readiness.lock.json`
-- `artifacts/confirmation-step.json`
+- `NEEDS_CONFIRMATION` runs must write only the lightweight state needed to
+  continue:
+  - `meta/readiness-verdict.json`
+  - `artifacts/workspace-readiness.lock.json`
+  - `artifacts/confirmation-step.json`
+- validated runs must additionally write the full bundle:
+  - `report.json`
+  - `report.md`
+  - `logs/run.log`
+  - `meta/env.json`
+  - `meta/inputs.json`
 
 Workspace latest cache must include:
 

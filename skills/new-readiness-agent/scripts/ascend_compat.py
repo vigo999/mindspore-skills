@@ -319,6 +319,7 @@ def assess_installed_framework_compatibility(
         "installed_versions": versions,
         "recommended_package_specs": reference.get("package_specs", []),
         "reference_status": reference.get("status"),
+        "compatible_rows": reference.get("compatible_rows", []),
         "status": "unresolved",
         "reason": reference.get("reason"),
         "matched_row": None,
