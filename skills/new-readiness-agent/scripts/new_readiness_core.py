@@ -106,7 +106,6 @@ VALIDATION_GATE_FIELDS = (
     "model_asset",
     "dataset_asset",
     "cann_path",
-    "launch_command",
 )
 CONFIRMATION_SEQUENCE = (
     {
@@ -188,14 +187,6 @@ CONFIRMATION_SEQUENCE = (
         "allow_free_text": True,
         "manual_hint": "Provide a CANN root or set_env.sh path if you already know it.",
         "prompt": "Confirm the CANN or Ascend environment path for this workspace.",
-    },
-    {
-        "field": "launch_command",
-        "label": "Launch Command",
-        "candidate_key": "launch_command_candidates",
-        "allow_free_text": True,
-        "manual_hint": "Provide the launch command template if the detected candidates are incomplete.",
-        "prompt": "Confirm the launch command template that represents the real workload entry.",
     },
 )
 PROBE_CODE = """
@@ -788,7 +779,7 @@ def build_numbered_options(
 
 
 def load_cached_confirmation(root: Path) -> Dict[str, object]:
-    confirmation_path = root / "runs" / "latest" / "new-readiness-agent" / "confirmation-latest.json"
+    confirmation_path = root / "readiness-output" / "latest" / "new-readiness-agent" / "confirmation-latest.json"
     if not confirmation_path.exists():
         return {}
     try:
@@ -1082,6 +1073,104 @@ def choose_environment(
     return {"candidate": recommended, "source": "auto_recommended", "confirmed": False}
 
 
+def shell_quote(value: Optional[str]) -> str:
+    return json.dumps(str(value or ""))
+
+
+def build_base_launch_command(
+    launcher_value: Optional[str],
+    selected_launcher_candidate: Optional[Dict[str, object]],
+    selected_python: Optional[str],
+    entry_script: Optional[str],
+) -> Optional[str]:
+    launcher = str(launcher_value or "").strip()
+    entry = str(entry_script or "").strip()
+    python_path = str(selected_python or "").strip()
+    command_template = str((selected_launcher_candidate or {}).get("command_template") or "").strip()
+
+    if launcher == "python":
+        if entry:
+            executable = python_path or "python"
+            return f"{shell_quote(executable)} {shell_quote(entry)}"
+        return command_template or None
+    if launcher == "bash":
+        if entry:
+            return f"bash {shell_quote(entry)}"
+        return command_template or None
+    if launcher in {"torchrun", "accelerate", "deepspeed", "msrun", "llamafactory-cli", "make"}:
+        if command_template:
+            return command_template
+        if launcher == "torchrun" and entry:
+            return f"torchrun {shell_quote(entry)}"
+        if launcher == "accelerate" and entry:
+            return f"accelerate launch {shell_quote(entry)}"
+        if launcher == "deepspeed" and entry:
+            return f"deepspeed {shell_quote(entry)}"
+        if launcher == "msrun" and entry:
+            return f"msrun {shell_quote(entry)}"
+        if launcher == "llamafactory-cli":
+            return "llamafactory-cli train"
+        if launcher == "make":
+            return "make"
+    return command_template or None
+
+
+def maybe_prefix_cann_environment(cann_value: Optional[str], command: Optional[str]) -> Optional[str]:
+    base_command = str(command or "").strip()
+    if not base_command:
+        return None
+    if not cann_value:
+        return base_command
+    system_layer = detect_ascend_runtime({"cann_path": cann_value})
+    script_path = str(system_layer.get("ascend_env_script_path") or "").strip()
+    if not script_path:
+        return base_command
+    return f"source {shell_quote(script_path)} && {base_command}"
+
+
+def derive_launch_command(
+    *,
+    root: Path,
+    args: object,
+    cached_confirmation: Dict[str, object],
+    confirmation_override: Optional[str],
+    field_candidates: List[Dict[str, object]],
+    launcher_value: Optional[str],
+    selected_launcher_candidate: Optional[Dict[str, object]],
+    selected_python: Optional[str],
+    entry_script: Optional[str],
+    cann_path: Optional[str],
+) -> Dict[str, object]:
+    explicit_value = getattr(args, "launch_command", None)
+    if confirmation_override not in {None, ""}:
+        return {"value": confirmation_override, "source": "manual_confirmation", "confirmed": True}
+    if explicit_value not in {None, ""}:
+        return {"value": explicit_value, "source": "explicit_input", "confirmed": True}
+
+    cached_fields = cached_confirmation.get("confirmed_fields") if isinstance(cached_confirmation.get("confirmed_fields"), dict) else {}
+    cached_item = cached_fields.get("launch_command") if isinstance(cached_fields.get("launch_command"), dict) else None
+    cached_value = cached_item.get("value") if isinstance(cached_item, dict) else None
+    if cached_value not in {None, ""}:
+        return {"value": cached_value, "source": "cached_confirmation", "confirmed": True}
+
+    derived_command = maybe_prefix_cann_environment(
+        cann_path,
+        build_base_launch_command(
+            launcher_value,
+            selected_launcher_candidate,
+            selected_python,
+            entry_script,
+        ),
+    )
+    if derived_command:
+        return {"value": derived_command, "source": "derived", "confirmed": True}
+
+    top = choose_top_candidate(list(field_candidates))
+    if not top:
+        return {"value": None, "source": "missing", "confirmed": True}
+    return {"value": top.get("command_template") or top.get("value"), "source": "auto_recommended", "confirmed": True}
+
+
 def build_required_packages(
     framework_value: Optional[str],
     launcher_value: Optional[str],
@@ -1230,6 +1319,99 @@ def summarize_import_failures(package_names: List[str], import_errors: Dict[str,
         else:
             details.append(name)
     return ", ".join(details)
+
+
+def summarize_ascend_runtime(
+    system_layer: Dict[str, object],
+    cann_input: Optional[str],
+    probe_env_source: Optional[str],
+    probe_env_error: Optional[str],
+) -> Tuple[str, List[str], Dict[str, object]]:
+    script_path = str(system_layer.get("ascend_env_script_path") or "").strip()
+    candidate_paths = [str(item) for item in (system_layer.get("ascend_env_candidate_paths") or []) if str(item).strip()]
+    selection_source = str(system_layer.get("ascend_env_selection_source") or probe_env_source or "").strip()
+
+    if system_layer.get("ascend_env_active"):
+        summary = "Ascend runtime variables are already active in the current environment."
+    elif script_path:
+        summary = f"Ascend runtime can be sourced from {script_path}."
+    elif cann_input:
+        summary = f"Ascend runtime evidence comes from explicit CANN path {cann_input}."
+    elif candidate_paths:
+        summary = f"Ascend runtime candidate script found at {candidate_paths[0]}."
+    else:
+        summary = "Ascend runtime evidence is weak or unresolved."
+
+    evidence: List[str] = []
+    if selection_source:
+        evidence.append(f"selection_source={selection_source}")
+    if cann_input:
+        evidence.append(f"cann_path={cann_input}")
+    if script_path:
+        evidence.append(f"ascend_env_script={script_path}")
+    evidence.extend(candidate_paths[:3])
+    if probe_env_error:
+        evidence.append(f"probe_error={probe_env_error}")
+
+    details = {
+        "ascend_env_active": bool(system_layer.get("ascend_env_active")),
+        "ascend_env_script_path": script_path or None,
+        "ascend_env_candidate_paths": candidate_paths,
+        "ascend_env_selection_source": selection_source or None,
+        "cann_path_input": cann_input,
+        "probe_environment_source": probe_env_source,
+        "probe_environment_error": probe_env_error,
+    }
+    return summary, evidence, details
+
+
+def summarize_cann_version(
+    cann_version_info: Dict[str, object],
+    system_layer: Dict[str, object],
+    cann_input: Optional[str],
+) -> Tuple[str, List[str], Dict[str, object]]:
+    version = str(cann_version_info.get("cann_version") or "").strip()
+    source = str(cann_version_info.get("cann_version_source") or "").strip()
+    version_file = str(cann_version_info.get("cann_version_file") or "").strip()
+    script_path = str(system_layer.get("ascend_env_script_path") or "").strip()
+
+    if version:
+        if version_file:
+            summary = f"CANN version detected: {version} from {version_file}."
+        elif source == "ascend_env_script" and script_path:
+            summary = f"CANN version detected: {version} from Ascend env script {script_path}."
+        elif source == "cann_path" and cann_input:
+            summary = f"CANN version detected: {version} from CANN path {cann_input}."
+        elif cann_input:
+            summary = f"CANN version detected: {version} from CANN path {cann_input}."
+        else:
+            summary = f"CANN version detected: {version}."
+    else:
+        if script_path:
+            summary = f"CANN version is unresolved; inspected Ascend env script {script_path}."
+        elif cann_input:
+            summary = f"CANN version is unresolved for CANN path {cann_input}."
+        else:
+            summary = "CANN version is unresolved."
+
+    evidence: List[str] = []
+    if version_file:
+        evidence.append(version_file)
+    if cann_input:
+        evidence.append(f"cann_path={cann_input}")
+    if script_path:
+        evidence.append(f"ascend_env_script={script_path}")
+    if source:
+        evidence.append(f"source={source}")
+
+    details = {
+        "cann_version": version or None,
+        "cann_version_source": source or None,
+        "cann_version_file": version_file or None,
+        "cann_path_input": cann_input,
+        "ascend_env_script_path": script_path or None,
+    }
+    return summary, evidence, details
 
 
 def executable_exists(command_name: str) -> bool:
@@ -1461,12 +1643,23 @@ def finalize_profile(scan: Dict[str, object], root: Path, args: object) -> Dict[
     dataset_choice = choose_asset("dataset", cached_confirmation, asset_bundle(scan, "dataset"), confirmation_overrides.get("dataset_asset"))
     checkpoint_choice = choose_asset("checkpoint", cached_confirmation, asset_bundle(scan, "checkpoint"), confirmation_overrides.get("checkpoint_asset"))
     cann_choice = choose_value("cann_path", getattr(args, "cann_path", None), cached_confirmation, list(scan["cann"]["candidates"]), confirmation_overrides.get("cann_path"))
-    command_choice = choose_value("launch_command", getattr(args, "launch_command", None), cached_confirmation, list(scan["launch_command_candidates"]), confirmation_overrides.get("launch_command"))
     extra_context_choice = choose_value("extra_context", getattr(args, "extra_context", None), cached_confirmation, [], confirmation_overrides.get("extra_context"))
     environment_choice = choose_environment(root, args, cached_confirmation, dict(scan["environment"]), confirmation_overrides.get("runtime_environment"))
 
     selected_launcher_candidate = next((item for item in scan["launcher_candidates"] if item.get("value") == launcher_choice["value"]), None)
     selected_environment_candidate = environment_choice.get("candidate")
+    command_choice = derive_launch_command(
+        root=root,
+        args=args,
+        cached_confirmation=cached_confirmation,
+        confirmation_override=confirmation_overrides.get("launch_command"),
+        field_candidates=list(scan["launch_command_candidates"]),
+        launcher_value=launcher_choice["value"],
+        selected_launcher_candidate=selected_launcher_candidate,
+        selected_python=selected_environment_candidate.get("python_path") if selected_environment_candidate else getattr(args, "selected_python", None),
+        entry_script=entry_choice["value"],
+        cann_path=cann_choice["value"],
+    )
     runtime_imports = collect_entry_runtime_imports(str(entry_choice["value"]) if entry_choice.get("value") else None, root)
     uses_llamafactory = bool(
         (selected_launcher_candidate and selected_launcher_candidate.get("uses_llamafactory"))
@@ -1607,22 +1800,24 @@ def build_pending_validation(scan: Dict[str, object], profile: Dict[str, object]
     system_layer = detect_ascend_runtime({"cann_path": cann_input})
     probe_env, probe_env_source, probe_env_error = resolve_runtime_environment(system_layer)
     cann_version_info = detect_cann_version(cann_input, system_layer.get("ascend_env_script_path"), probe_env)
+    ascend_summary, ascend_evidence, ascend_details = summarize_ascend_runtime(system_layer, cann_input, probe_env_source, probe_env_error)
+    cann_summary, cann_evidence, cann_details = summarize_cann_version(cann_version_info, system_layer, cann_input)
     checks.append(
         make_check(
             "ascend-runtime",
             "ok" if (system_layer.get("ascend_env_active") or system_layer.get("ascend_env_script_present") or cann_input) else "warn",
-            "Ascend runtime evidence is available." if (system_layer.get("ascend_env_active") or system_layer.get("ascend_env_script_present") or cann_input) else "Ascend runtime evidence is weak or unresolved.",
-            evidence=[str(item) for item in (system_layer.get("ascend_env_candidate_paths") or [])[:3]],
-            selection_source=probe_env_source,
-            error=probe_env_error,
+            ascend_summary,
+            evidence=ascend_evidence,
+            details=ascend_details,
         )
     )
     checks.append(
         make_check(
             "cann-version",
             "ok" if cann_version_info.get("cann_version") else "warn",
-            f"CANN version detected: {cann_version_info.get('cann_version')}" if cann_version_info.get("cann_version") else "CANN version is unresolved.",
-            evidence=[str(cann_version_info.get("cann_version_file") or "")],
+            cann_summary,
+            evidence=cann_evidence,
+            details=cann_details,
         )
     )
 
@@ -1693,6 +1888,8 @@ def validate_profile(scan: Dict[str, object], profile: Dict[str, object], root: 
     system_layer = detect_ascend_runtime({"cann_path": cann_input})
     probe_env, probe_env_source, probe_env_error = resolve_runtime_environment(system_layer)
     cann_version_info = detect_cann_version(cann_input, system_layer.get("ascend_env_script_path"), probe_env)
+    ascend_summary, ascend_evidence, ascend_details = summarize_ascend_runtime(system_layer, cann_input, probe_env_source, probe_env_error)
+    cann_summary, cann_evidence, cann_details = summarize_cann_version(cann_version_info, system_layer, cann_input)
 
     checks.append(make_check("target-selection", "ok" if profile.get("target") else "block", f"target selected: {profile.get('target')}" if profile.get("target") else "target is unresolved"))
     checks.append(make_check("launcher-selection", "ok" if profile.get("launcher") else "block", f"launcher selected: {profile.get('launcher')}" if profile.get("launcher") else "launcher is unresolved"))
@@ -1702,8 +1899,8 @@ def validate_profile(scan: Dict[str, object], profile: Dict[str, object], root: 
     else:
         checks.append(make_check("python-environment", "block", "runtime environment is unresolved"))
     checks.append(make_check("framework-selection", "ok" if profile.get("framework") else "block", f"framework selected: {profile.get('framework')}" if profile.get("framework") else "framework is unresolved"))
-    checks.append(make_check("ascend-runtime", "ok" if (system_layer.get("ascend_env_active") or system_layer.get("ascend_env_script_present") or cann_input) else "warn", "Ascend runtime evidence is available." if (system_layer.get("ascend_env_active") or system_layer.get("ascend_env_script_present") or cann_input) else "Ascend runtime evidence is weak or unresolved.", evidence=[str(item) for item in (system_layer.get("ascend_env_candidate_paths") or [])[:3]], selection_source=probe_env_source, error=probe_env_error))
-    checks.append(make_check("cann-version", "ok" if cann_version_info.get("cann_version") else "warn", f"CANN version detected: {cann_version_info.get('cann_version')}" if cann_version_info.get("cann_version") else "CANN version is unresolved.", evidence=[str(cann_version_info.get("cann_version_file") or "")]))
+    checks.append(make_check("ascend-runtime", "ok" if (system_layer.get("ascend_env_active") or system_layer.get("ascend_env_script_present") or cann_input) else "warn", ascend_summary, evidence=ascend_evidence, details=ascend_details))
+    checks.append(make_check("cann-version", "ok" if cann_version_info.get("cann_version") else "warn", cann_summary, evidence=cann_evidence, details=cann_details))
 
     framework_packages = FRAMEWORK_PACKAGES.get(str(profile.get("framework") or ""), [])
     import_probes, import_errors, import_error = probe_imports(profile.get("required_packages") or [], selected_python, probe_env)

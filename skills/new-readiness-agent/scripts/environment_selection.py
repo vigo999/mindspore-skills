@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -14,6 +15,12 @@ WORKSPACE_ENV_CANDIDATES = (
     "venv",
     ".env",
     "env",
+)
+CONDA_SPEC_FILES = (
+    "environment.yml",
+    "environment.yaml",
+    "conda.yml",
+    "conda.yaml",
 )
 PYTHON_RELATIVE_CANDIDATES = (
     Path("bin/python"),
@@ -100,6 +107,13 @@ def split_command(command: Optional[str]) -> List[str]:
     return [item for item in str(command).strip().split() if item]
 
 
+def read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
 def conda_executable() -> Optional[str]:
     for token in ("conda", "mamba"):
         resolved = shutil.which(token)
@@ -108,32 +122,83 @@ def conda_executable() -> Optional[str]:
     return None
 
 
-def resolve_conda_name_to_prefix(name: str) -> Optional[Path]:
-    executable = conda_executable()
-    if not executable:
-        return None
+def list_conda_envs(executable: Optional[str] = None) -> List[Dict[str, Optional[str]]]:
+    resolved = executable or conda_executable()
+    if not resolved:
+        return []
     try:
         completed = subprocess.run(
-            [executable, "env", "list", "--json"],
+            [resolved, "env", "list", "--json"],
             check=True,
             text=True,
             capture_output=True,
             timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
-        return None
+        return []
     try:
         payload = json.loads(completed.stdout or "{}")
     except json.JSONDecodeError:
-        return None
-    envs = payload.get("envs")
-    if not isinstance(envs, list):
-        return None
-    for item in envs:
-        candidate = Path(str(item))
-        if candidate.name == name:
+        return []
+
+    default_prefix = str(payload.get("default_prefix") or "").strip() or None
+    raw_envs = payload.get("envs")
+    if not isinstance(raw_envs, list):
+        return []
+
+    environments: List[Dict[str, Optional[str]]] = []
+    for item in raw_envs:
+        prefix_value = str(item or "").strip()
+        if not prefix_value:
+            continue
+        prefix = Path(prefix_value)
+        env_name = "base" if default_prefix and prefix_value == default_prefix else prefix.name
+        environments.append(
+            {
+                "name": env_name or None,
+                "prefix": str(prefix),
+                "is_default": bool(default_prefix and prefix_value == default_prefix),
+            }
+        )
+    return environments
+
+
+def resolve_conda_name_to_prefix(name: str) -> Optional[Path]:
+    for item in list_conda_envs():
+        env_name = str(item.get("name") or "").strip()
+        prefix_value = str(item.get("prefix") or "").strip()
+        if not prefix_value:
+            continue
+        candidate = Path(prefix_value)
+        if env_name == name or candidate.name == name:
             return candidate
     return None
+
+
+def workspace_conda_clues(root: Path) -> Dict[str, object]:
+    spec_paths: List[Path] = []
+    declared_names: List[str] = []
+    seen_names = set()
+    for file_name in CONDA_SPEC_FILES:
+        spec_path = root / file_name
+        if not spec_path.exists() or not spec_path.is_file():
+            continue
+        spec_paths.append(spec_path)
+        text = read_text(spec_path)
+        for line in text.splitlines():
+            match = re.match(r"^\s*name\s*:\s*['\"]?([^'\"\s#]+)", line)
+            if not match:
+                continue
+            env_name = str(match.group(1)).strip()
+            if env_name and env_name not in seen_names:
+                seen_names.add(env_name)
+                declared_names.append(env_name)
+            break
+    return {
+        "spec_paths": spec_paths,
+        "declared_names": declared_names,
+        "has_conda_spec": bool(spec_paths),
+    }
 
 
 def _candidate(
@@ -148,6 +213,7 @@ def _candidate(
     is_active: bool = False,
     matches_launch_command: bool = False,
     recommended_reason: Optional[str] = None,
+    declared_in_workspace: bool = False,
 ) -> Dict[str, object]:
     candidate: Dict[str, object] = {
         "kind": kind,
@@ -160,6 +226,7 @@ def _candidate(
         "matches_launch_command": matches_launch_command,
         "workspace_local": bool(env_root and path_is_within(env_root, root)),
         "recommended_reason": recommended_reason,
+        "declared_in_workspace": declared_in_workspace,
     }
     return candidate
 
@@ -237,6 +304,8 @@ def _boost_confidence(candidate: Dict[str, object], launch_detected: bool, root:
         confidence += 0.35
     if candidate.get("kind") == "uv-project":
         confidence += 0.1
+    if candidate.get("declared_in_workspace"):
+        confidence += 0.12
     if candidate.get("env_root"):
         env_root = Path(str(candidate["env_root"]))
         if path_is_within(env_root, root):
@@ -247,21 +316,91 @@ def _boost_confidence(candidate: Dict[str, object], launch_detected: bool, root:
 
 
 def _dedupe_candidates(candidates: List[Dict[str, object]]) -> List[Dict[str, object]]:
-    seen = set()
     unique: List[Dict[str, object]] = []
+    index_by_key: Dict[Tuple[Optional[str], Optional[str], Optional[str]], int] = {}
     for candidate in candidates:
         key = (
-            candidate.get("kind"),
-            candidate.get("python_path"),
-            candidate.get("env_root"),
-            candidate.get("env_name"),
-            candidate.get("label"),
+            str(candidate.get("python_path") or "") or None,
+            str(candidate.get("env_root") or "") or None,
+            str(candidate.get("env_name") or "") or None,
         )
-        if key in seen:
+        if key == (None, None, None):
+            key = (None, None, str(candidate.get("label") or "") or None)
+        existing_index = index_by_key.get(key)
+        if existing_index is None:
+            index_by_key[key] = len(unique)
+            unique.append(candidate)
             continue
-        seen.add(key)
-        unique.append(candidate)
+
+        existing = unique[existing_index]
+        existing["is_active"] = bool(existing.get("is_active") or candidate.get("is_active"))
+        existing["matches_launch_command"] = bool(existing.get("matches_launch_command") or candidate.get("matches_launch_command"))
+        existing["workspace_local"] = bool(existing.get("workspace_local") or candidate.get("workspace_local"))
+        existing["declared_in_workspace"] = bool(existing.get("declared_in_workspace") or candidate.get("declared_in_workspace"))
+        if not existing.get("python_path") and candidate.get("python_path"):
+            existing["python_path"] = candidate.get("python_path")
+        if not existing.get("env_root") and candidate.get("env_root"):
+            existing["env_root"] = candidate.get("env_root")
+        if not existing.get("env_name") and candidate.get("env_name"):
+            existing["env_name"] = candidate.get("env_name")
+
+        existing_score = (
+            3 if existing.get("matches_launch_command") else 0,
+            2 if existing.get("is_active") else 0,
+            1 if existing.get("declared_in_workspace") else 0,
+            1 if existing.get("workspace_local") else 0,
+        )
+        candidate_score = (
+            3 if candidate.get("matches_launch_command") else 0,
+            2 if candidate.get("is_active") else 0,
+            1 if candidate.get("declared_in_workspace") else 0,
+            1 if candidate.get("workspace_local") else 0,
+        )
+        if candidate_score > existing_score:
+            existing["kind"] = candidate.get("kind")
+            existing["selection_source"] = candidate.get("selection_source")
+            existing["label"] = candidate.get("label")
+            existing["recommended_reason"] = candidate.get("recommended_reason") or existing.get("recommended_reason")
+        elif not existing.get("recommended_reason") and candidate.get("recommended_reason"):
+            existing["recommended_reason"] = candidate.get("recommended_reason")
     return unique
+
+
+def _workspace_conda_candidates(root: Path) -> List[Dict[str, object]]:
+    clue = workspace_conda_clues(root)
+    if not clue.get("has_conda_spec"):
+        return []
+
+    environments = list_conda_envs()
+    if not environments:
+        return []
+
+    declared_names = {str(name) for name in clue.get("declared_names") or [] if str(name).strip()}
+    results: List[Dict[str, object]] = []
+    for item in environments:
+        prefix_value = str(item.get("prefix") or "").strip()
+        if not prefix_value:
+            continue
+        env_name = str(item.get("name") or "").strip() or None
+        matches_declared_name = bool(env_name and env_name in declared_names)
+        if matches_declared_name:
+            recommended_reason = f"workspace conda spec declares environment {env_name}"
+        else:
+            recommended_reason = "workspace includes conda environment metadata"
+        label_name = env_name or Path(prefix_value).name
+        results.append(
+            _candidate(
+                kind="workspace-conda",
+                selection_source="workspace_scan",
+                label=f"conda env: {label_name}",
+                root=root,
+                env_root=Path(prefix_value),
+                env_name=env_name,
+                recommended_reason=recommended_reason,
+                declared_in_workspace=matches_declared_name,
+            )
+        )
+    return results
 
 
 def _workspace_env_candidates(root: Path) -> List[Dict[str, object]]:
@@ -476,6 +615,7 @@ def build_environment_candidates(
     candidates.extend(_launch_command_candidates(root, launch_command))
     candidates.extend(_active_env_candidates(root))
     candidates.extend(_workspace_env_candidates(root))
+    candidates.extend(_workspace_conda_candidates(root))
     candidates.extend(_system_python_candidates(root))
     candidates = _dedupe_candidates(candidates)
 

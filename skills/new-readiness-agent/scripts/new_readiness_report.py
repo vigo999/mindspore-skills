@@ -10,10 +10,10 @@ from asset_schema import asset_locator_summary
 
 
 LATEST_CACHE_REF = {
-    "root": "runs/latest/new-readiness-agent",
-    "lock": "runs/latest/new-readiness-agent/workspace-readiness.lock.json",
-    "confirmation": "runs/latest/new-readiness-agent/confirmation-latest.json",
-    "run_ref": "runs/latest/new-readiness-agent/run-ref.json",
+    "root": "readiness-output/latest/new-readiness-agent",
+    "lock": "readiness-output/latest/new-readiness-agent/workspace-readiness.lock.json",
+    "confirmation": "readiness-output/latest/new-readiness-agent/confirmation-latest.json",
+    "run_ref": "readiness-output/latest/new-readiness-agent/run-ref.json",
 }
 
 LIGHTWEIGHT_RUN_ARTIFACTS = {
@@ -390,7 +390,7 @@ def write_json(path: Path, payload: Dict[str, object]) -> None:
 
 
 def write_latest_cache(root: Path, run_id: str, lock_payload: Dict[str, object], current_confirmation: Optional[Dict[str, object]], pending_confirmation_fields: List[str], confirmed_fields: Dict[str, object], output_dir: Path) -> Dict[str, str]:
-    latest_root = root / "runs" / "latest" / "new-readiness-agent"
+    latest_root = root / "readiness-output" / "latest" / "new-readiness-agent"
     latest_root.mkdir(parents=True, exist_ok=True)
     lock_path = latest_root / "workspace-readiness.lock.json"
     confirmation_path = latest_root / "confirmation-latest.json"

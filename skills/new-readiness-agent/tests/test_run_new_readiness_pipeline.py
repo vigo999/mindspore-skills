@@ -147,7 +147,7 @@ def test_pipeline_requires_confirmation_before_final_verdict(tmp_path: Path):
     assert not (output_dir / "meta" / "env.json").exists()
     assert not (output_dir / "meta" / "inputs.json").exists()
     assert not (output_dir / "logs" / "run.log").exists()
-    assert (workspace / "runs" / "latest" / "new-readiness-agent" / "workspace-readiness.lock.json").exists()
+    assert (workspace / "readiness-output" / "latest" / "new-readiness-agent" / "workspace-readiness.lock.json").exists()
 
 
 def test_pipeline_writes_full_bundle_and_surfaces_cann_paths(tmp_path: Path, fake_selected_python: Path):
@@ -186,15 +186,13 @@ def test_pipeline_writes_full_bundle_and_surfaces_cann_paths(tmp_path: Path, fak
         "dataset",
         "--cann-path",
         str(cann_root),
-        "--launch-command",
-        "torchrun train.py --config train.yaml",
         cwd=workspace,
     )
 
     verdict = json.loads((output_dir / "meta" / "readiness-verdict.json").read_text(encoding="utf-8"))
     summary = stdout_payload(completed)
     report = json.loads((output_dir / "report.json").read_text(encoding="utf-8"))
-    latest_root = workspace / "runs" / "latest" / "new-readiness-agent"
+    latest_root = workspace / "readiness-output" / "latest" / "new-readiness-agent"
     latest_lock = json.loads((latest_root / "workspace-readiness.lock.json").read_text(encoding="utf-8"))
     confirmation = json.loads((latest_root / "confirmation-latest.json").read_text(encoding="utf-8"))
 
@@ -227,21 +225,26 @@ def test_pipeline_writes_full_bundle_and_surfaces_cann_paths(tmp_path: Path, fak
     assert (output_dir / "logs" / "run.log").exists()
     assert verdict["cann_path"] == str(cann_root)
     assert verdict["ascend_env_script_path"] is None
+    assert "torchrun" in str(verdict["launcher"]["command_template"])
     assert latest_lock["cann_path"] == str(cann_root)
     assert latest_lock["ascend_env_script_path"] is None
     assert latest_lock["launcher"] == "torchrun"
     assert latest_lock["selected_python"] == str(fake_selected_python)
     assert confirmation["current_confirmation"] is None
     assert verdict["latest_cache_ref"] == {
-        "root": "runs/latest/new-readiness-agent",
-        "lock": "runs/latest/new-readiness-agent/workspace-readiness.lock.json",
-        "confirmation": "runs/latest/new-readiness-agent/confirmation-latest.json",
-        "run_ref": "runs/latest/new-readiness-agent/run-ref.json",
+        "root": "readiness-output/latest/new-readiness-agent",
+        "lock": "readiness-output/latest/new-readiness-agent/workspace-readiness.lock.json",
+        "confirmation": "readiness-output/latest/new-readiness-agent/confirmation-latest.json",
+        "run_ref": "readiness-output/latest/new-readiness-agent/run-ref.json",
     }
     compatibility_check = check_by_id(verdict, "framework-compatibility")
+    cann_check = check_by_id(verdict, "cann-version")
+    ascend_runtime_check = check_by_id(verdict, "ascend-runtime")
     assert compatibility_check["status"] == "ok"
     assert "match a local compatibility row" in compatibility_check["summary"]
     assert compatibility_check["details"]["installed_versions"]["torch"] == "2.9.0"
+    assert str(cann_root) in cann_check["summary"]
+    assert str(cann_root) in ascend_runtime_check["summary"]
     report_markdown = (output_dir / "report.md").read_text(encoding="utf-8")
     assert f"- cann_path: `{cann_root}`" in report_markdown
 
@@ -368,6 +371,40 @@ def test_pipeline_advances_one_confirmation_step_at_a_time(tmp_path: Path):
     assert current_field(third) == "framework"
 
 
+def test_pipeline_reuses_one_attempt_directory_across_default_confirmation_steps(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    first = stdout_payload(
+        run_pipeline(
+            "--working-dir",
+            str(workspace),
+            cwd=workspace,
+        )
+    )
+    second = stdout_payload(
+        run_pipeline(
+            "--working-dir",
+            str(workspace),
+            "--confirm",
+            "target=training",
+            cwd=workspace,
+        )
+    )
+
+    attempts_root = workspace / "readiness-output" / "attempts"
+    attempt_dirs = [path for path in attempts_root.iterdir() if path.is_dir()]
+
+    assert current_field(first) == "target"
+    assert current_field(second) == "launcher"
+    assert len(attempt_dirs) == 1
+    first_output_dir = Path(first["output_dir"])
+    second_output_dir = Path(second["output_dir"])
+    assert first_output_dir.parent == second_output_dir.parent
+    assert first_output_dir.name == "current"
+    assert second_output_dir.name == "current"
+
+
 def test_pipeline_detects_llamafactory_launcher_from_explicit_command(tmp_path: Path, fake_selected_python: Path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -438,7 +475,7 @@ def test_repeated_run_refreshes_latest_run_ref(tmp_path: Path, fake_selected_pyt
         cwd=workspace,
     )
 
-    latest_root = workspace / "runs" / "latest" / "new-readiness-agent"
+    latest_root = workspace / "readiness-output" / "latest" / "new-readiness-agent"
     first_run_ref = json.loads((latest_root / "run-ref.json").read_text(encoding="utf-8"))
 
     out2 = tmp_path / "out2"
@@ -566,8 +603,6 @@ def test_pipeline_treats_hf_cache_dataset_as_satisfied_in_final_verdict(tmp_path
         "karthiksagarn/astro_horoscope",
         "--cann-path",
         str(cann_root),
-        "--launch-command",
-        "python train_qwen3.py",
         "--confirm",
         "config_asset=inline_config",
         cwd=workspace,
@@ -626,8 +661,6 @@ def test_pipeline_treats_inline_config_as_a_valid_asset(tmp_path: Path, fake_sel
         "dataset",
         "--cann-path",
         str(cann_root),
-        "--launch-command",
-        "python train.py",
         "--confirm",
         "config_asset=inline_config",
         cwd=workspace,

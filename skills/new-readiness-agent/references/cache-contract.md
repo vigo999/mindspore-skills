@@ -2,7 +2,8 @@
 
 Run-scoped artifacts live under:
 
-- `runs/<run_id>/out/`
+- `readiness-output/attempts/<attempt_id>/current/`
+- `readiness-output/attempts/<attempt_id>/final/`
 
 Run-scoped writing is phase-sensitive:
 
@@ -19,16 +20,22 @@ Run-scoped writing is phase-sensitive:
 
 Workspace latest cache lives under:
 
-- `runs/latest/new-readiness-agent/`
+- `readiness-output/latest/new-readiness-agent/`
 
 Downstream agents should prefer:
 
-- `runs/latest/new-readiness-agent/workspace-readiness.lock.json`
+- `readiness-output/latest/new-readiness-agent/workspace-readiness.lock.json`
 
 If the user explicitly provides a run-scoped artifact path, downstream agents
 may read:
 
-- `runs/<run_id>/out/artifacts/workspace-readiness.lock.json`
+- `readiness-output/attempts/<attempt_id>/current/artifacts/workspace-readiness.lock.json`
+- `readiness-output/attempts/<attempt_id>/final/artifacts/workspace-readiness.lock.json`
+
+The attempt directory groups one end-to-end readiness certification flow. A
+stepwise rerun with `--confirm field=value` should reuse the active
+`<attempt_id>` instead of creating a brand-new sibling directory for every
+confirmation step.
 
 `workspace-readiness.lock.json` must remain the stable downstream contract for:
 

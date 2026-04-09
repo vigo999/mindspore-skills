@@ -95,7 +95,7 @@ inputs:
 
 outputs:
   report_schema: "skills/_shared/contract/report.schema.json"
-  out_dir_layout: "runs/<run_id>/out/"
+  out_dir_layout: "readiness-output/attempts/<attempt_id>/{current|final}/"
 
 permissions:
   network: "none"

@@ -183,9 +183,18 @@ Run-scoped artifacts are phase-sensitive:
 
 Workspace latest cache must include:
 
-- `runs/latest/new-readiness-agent/workspace-readiness.lock.json`
-- `runs/latest/new-readiness-agent/confirmation-latest.json`
-- `runs/latest/new-readiness-agent/run-ref.json`
+- `readiness-output/latest/new-readiness-agent/workspace-readiness.lock.json`
+- `readiness-output/latest/new-readiness-agent/confirmation-latest.json`
+- `readiness-output/latest/new-readiness-agent/run-ref.json`
+
+Default run-scoped output must live under:
+
+- `readiness-output/attempts/<attempt_id>/current/` while confirmation is still pending
+- `readiness-output/attempts/<attempt_id>/final/` after the readiness verdict is validated
+
+When the user continues the same readiness flow with `--confirm field=value`,
+reuse the active `<attempt_id>` instead of creating a new top-level sibling
+directory for every confirmation step.
 
 ## Stage 4. Report Builder
 
@@ -230,6 +239,7 @@ Load these references when needed:
 - `references/product-contract.md`
 - `references/decision-rules.md`
 - `references/cache-contract.md`
+- `references/design-trace.md`
 
 ## Scripts
 

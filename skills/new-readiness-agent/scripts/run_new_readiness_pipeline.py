@@ -10,6 +10,11 @@ from new_readiness_core import build_run_state
 from new_readiness_report import write_report_bundle
 
 
+READINESS_OUTPUT_DIRNAME = "readiness-output"
+LATEST_CACHE_DIR = Path(READINESS_OUTPUT_DIRNAME) / "latest" / "new-readiness-agent"
+ATTEMPTS_DIR = Path(READINESS_OUTPUT_DIRNAME) / "attempts"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the read-only new-readiness-agent workflow.")
     parser.add_argument("--working-dir", help="workspace root (defaults to the current shell path)")
@@ -39,10 +44,35 @@ def default_run_id() -> str:
     return datetime.utcnow().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8]
 
 
-def compute_output_dir(root: Path, run_id: str, explicit_output_dir: Optional[str]) -> Path:
+def load_latest_cache_payload(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def resolve_attempt_id(root: Path, args: argparse.Namespace) -> str:
+    if args.run_id:
+        return args.run_id
+    if args.confirm:
+        latest_root = root / LATEST_CACHE_DIR
+        confirmation_payload = load_latest_cache_payload(latest_root / "confirmation-latest.json")
+        pending_fields = confirmation_payload.get("pending_confirmation_fields")
+        run_ref_payload = load_latest_cache_payload(latest_root / "run-ref.json")
+        cached_attempt_id = str(run_ref_payload.get("run_id") or "").strip()
+        if cached_attempt_id and isinstance(pending_fields, list) and pending_fields:
+            return cached_attempt_id
+    return default_run_id()
+
+
+def compute_output_dir(root: Path, attempt_id: str, explicit_output_dir: Optional[str], phase: str) -> Path:
     if explicit_output_dir:
         return Path(explicit_output_dir).resolve()
-    return (root / "runs" / run_id / "out").resolve()
+    phase_dir = "current" if phase == "awaiting_confirmation" else "final"
+    return (root / ATTEMPTS_DIR / attempt_id / phase_dir).resolve()
 
 
 def main() -> int:
@@ -50,8 +80,10 @@ def main() -> int:
     args = parser.parse_args()
 
     working_dir = Path(args.working_dir or ".").resolve()
-    run_id = args.run_id or default_run_id()
-    output_dir = compute_output_dir(working_dir, run_id, args.output_dir)
+    run_id = resolve_attempt_id(working_dir, args)
+    state = build_run_state(working_dir, args)
+    phase = "awaiting_confirmation" if state["validation"]["status"] == "NEEDS_CONFIRMATION" else "validated"
+    output_dir = compute_output_dir(working_dir, run_id, args.output_dir, phase)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     inputs_snapshot = {
@@ -80,7 +112,6 @@ def main() -> int:
         },
     }
 
-    state = build_run_state(working_dir, args)
     bundle = write_report_bundle(
         root=working_dir,
         run_id=run_id,
