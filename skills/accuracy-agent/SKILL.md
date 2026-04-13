@@ -42,6 +42,9 @@ These are non-negotiable invariants. Every rule applies at every stage.
   baseline is the source of truth. All fixes apply only to the target side. If
   the baseline looks wrong, raise the concern to the user instead of editing it.
 - Establish a comparable baseline before making root-cause claims.
+- Treat the test harness and reference implementation as potential root-cause
+  candidates, not just the target kernel or operator. A wrong baseline dtype,
+  cast, tolerance, or reference branch can create a fake accuracy bug.
 - Evidence comes before conclusion. Every root-cause claim must cite observed
   evidence and name a validation check or next experiment.
 - Layer-by-layer structured tensor comparison is the primary localization
@@ -52,6 +55,7 @@ These are non-negotiable invariants. Every rule applies at every stage.
 - Find the earliest meaningful divergence before suggesting fixes or naming root
   causes. If the divergence point is still unknown, reduce scope or build a
   targeted compare until you can name it.
+- Find the earliest meaningful divergence before suggesting fixes.
 - Treat implicit API parameter defaults as first-class evidence. Different
   frameworks often use different defaults for the same named parameter; aligning
   parameters is cheaper and more reliable than rewriting the operator.
@@ -69,16 +73,28 @@ These are non-negotiable invariants. Every rule applies at every stage.
 - In `diagnose` mode, do not edit code, configs, or the environment.
 - In `fix` mode, do not edit anything until you have presented the diagnosis,
   proposed the fix, and received explicit user confirmation.
+- Handle one confirmed accuracy issue per invocation. If a residual gap remains
+  after fixing the diagnosed issue, stop and ask whether to start a new pass for
+  the next issue.
 
 ## Workflow
 
 Run these stages in order. Do not skip a stage. If a stage is incomplete, state
 what evidence is missing before moving on.
 
+Do not skip workflow stages.
+
+1. `accuracy-analyzer`
+2. `consistency-validator`
+3. `snapshot-builder`
+4. `report-builder`
+
 1. **Analyze** — collect context, locate the first divergence point
 2. **Validate** — from the identified divergence, narrow and verify root cause
 3. **Report** — write diagnosis snapshot and human report
 4. **Fix** (`fix` mode only) — propose → confirm → apply → verify
+
+## Stage 1. Accuracy Analyzer
 
 ## Stage 1: Analyze
 
@@ -117,6 +133,8 @@ Collect context and locate the first divergence point.
     domains (data / config / model / checkpoint / dtype / api parameters /
     device placement / framework), and confidence.
 
+## Stage 2. Consistency Validator
+
 ## Stage 2: Validate
 
 From the identified divergence point, narrow and verify the root cause.
@@ -147,6 +165,15 @@ From the identified divergence point, narrow and verify the root cause.
    d. Only reimplement from smaller operators after proving (a)–(c)
       insufficient.
 
+   Before concluding that the operator itself is wrong, also load
+   `references/reference-baseline-triage.md` if any of these are true:
+   - the failure appears only in one dtype such as `float64`
+   - the discrepancy is reported by a component test or cross-framework compare
+   - the reference path has framework-specific branches
+   - the mismatch occurs on scalar / 0D / boundary-value inputs
+   - the operator is numerically sensitive, such as `tan`, `exp`, `log`, `div`,
+     `reciprocal`, or `sqrt`
+
    Do not skip to (d). Do not write a math-formula reimplementation before
    exhausting (a)–(c). The reference file contains additional detail, the API
    mapping table link, and a "Do not" checklist — read them.
@@ -157,10 +184,20 @@ From the identified divergence point, narrow and verify the root cause.
    `references/debug-script-hygiene.md` first.
 8. Return ranked root-cause candidates with: confidence, evidence, validation
    checks, and fix hints.
+   Include:
+   - dtype, precision, API parameter, and device-placement consistency
+   - api parameters
+   - device placement
+   - confidence
+   - evidence
+   - validation checks
+   - fix hints
 
 Do not downgrade an unresolved delta to "probably normal cross-platform noise"
 unless the evidence points to a backend or precision explanation and the user
 accepts the residual gap.
+
+## Stage 3. Snapshot Builder
 
 ## Stage 3: Report
 
@@ -188,6 +225,8 @@ Recommended artifact paths:
 - `out/meta/accuracy-profile.json`
 - `out/meta/root-causes.json`
 - `out/artifacts/accuracy.lock.json`
+
+## Stage 4. Report Builder
 
 ## Stage 4: Fix
 
@@ -242,6 +281,9 @@ to be read at a specific decision point — loading it elsewhere adds noise.
   keyed to the first divergence stage
 - `references/operator-accuracy-triage.md` — 4-step callsite recheck, repro,
   replacement, and scoped validation checklist for operator-level issues
+- `references/reference-baseline-triage.md` — checklist for ruling out fake
+  accuracy bugs caused by test-harness dtype casts, tolerance mistakes,
+  reference-framework branch errors, and scalar-path mismatches
 - `references/ascend-precision-notes.md` — shared CANN/aclnn kernel facts, HF32
   modes, accumulation paths, and kernel-path differences on Ascend backend
 

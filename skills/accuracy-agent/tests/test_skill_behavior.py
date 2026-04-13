@@ -32,6 +32,7 @@ def test_references_and_scripts_are_declared():
     assert "`references/consistency-validation.md`" in text
     assert "`references/debug-script-hygiene.md`" in text
     assert "`references/operator-accuracy-triage.md`" in text
+    assert "`references/reference-baseline-triage.md`" in text
     assert "`scripts/collect_accuracy_context.py`" in text
     assert "`scripts/summarize_metric_diff.py`" in text
 
@@ -51,6 +52,23 @@ def test_operator_triage_reference_tracks_official_api_mapping():
     )
     assert "https://www.mindspore.cn/docs/zh-CN/master/note/api_mapping/pytorch_api_mapping.html" in text
     assert "official PyTorch-to-MindSpore API" in text
+
+
+def test_skill_requires_baseline_branch_checks_before_operator_blame():
+    text = SKILL_MD.read_text(encoding="utf-8")
+    assert "Treat the test harness and reference implementation as potential root-cause" in text
+    assert "`references/reference-baseline-triage.md`" in text
+    assert "the failure appears only in one dtype such as `float64`" in text
+
+
+def test_reference_baseline_triage_covers_dtype_cast_regression_pattern():
+    text = (SKILL_MD.parent / "references" / "reference-baseline-triage.md").read_text(
+        encoding="utf-8"
+    )
+    assert "float64" in text
+    assert "astype(np.float32)" in text
+    assert "scalar / 0D" in text
+    assert "test-harness bug" in text
 
 
 def test_collect_accuracy_context_tracks_framework_versions():
