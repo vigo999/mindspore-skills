@@ -28,6 +28,11 @@ Classify from the user's wording and any directly visible evidence:
   - adapt
   - integrate
   - add to model
+  - trending paper
+  - DeepXiv
+  - code map
+  - TransMLA
+  - MLA
 - operator keywords:
   - operator
   - op
@@ -40,10 +45,8 @@ Classify from the user's wording and any directly visible evidence:
 
 ## Routing Decision
 
-- if the task is about integrating a paper feature, algorithm change, or model
-  capability into an existing codebase, load `algorithm-agent`
-- if the task is about building, registering, or verifying a framework operator,
-  load `operator-agent`
+- if the task is about integrating a paper feature, algorithm change, paper intake and triage, released-code analysis, or model capability into an existing codebase, load `algorithm-agent`
+- if the task is about building, registering, or verifying a framework operator, load `operator-agent`
 
 If classification is ambiguous, ask the user to choose exactly one:
 
@@ -66,6 +69,7 @@ After choosing the specialist skill:
 /integrate add MHC feature into Qwen3 model
 /integrate implement a custom fused attention operator for MindSpore
 /integrate port this LoRA technique from the paper into our training script
+/integrate use DeepXiv and public code to triage a TransMLA integration for Qwen
 ```
 
 If the user does not specify what they want to integrate, ask for the source

@@ -12,7 +12,7 @@
     {
       "name": "ms",
       "source": "./",
-      "description": "Complete collection of MindSpore development skills - CPU/GPU/NPU operator building, testing, optimization, and model migration from PyTorch/HuggingFace",
+      "description": "Complete collection of MindSpore development skills - CPU/GPU/NPU operator building, testing, optimization, model migration, and paper-to-factory algorithm integration workflows",
       "author": {
         "name": "MindSpore"
       },

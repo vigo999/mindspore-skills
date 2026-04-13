@@ -21,3 +21,9 @@ def test_attnres_route_pack_exists():
     assert (ROOT / "references" / "attnres" / "attnres-implementation-pattern.md").exists()
     assert (ROOT / "references" / "attnres" / "attnres-validation-checklist.md").exists()
     assert (ROOT / "references" / "attnres" / "attnres-qwen3-case-study.md").exists()
+
+
+def test_phase1_combined_references_and_helper_exist():
+    assert (ROOT / "references" / "phase1-intake-and-triage.md").exists()
+    assert (ROOT / "references" / "phase1-verification-and-admission.md").exists()
+    assert (ROOT / "scripts" / "phase1_artifact_helper.py").exists()
