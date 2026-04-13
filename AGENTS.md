@@ -15,7 +15,7 @@ You are an expert MindSpore developer. Use the skills below to help developers w
 | operator-agent | skills/operator-agent/ | build `torch` or `mindspore` operators through custom-access or native-framework integration |
 | readiness-agent | skills/readiness-agent/ | check whether a local single-machine workspace is ready to train or run inference now, identify what is missing before execution, and optionally apply safe user-space readiness fixes |
 | accuracy-agent | skills/accuracy-agent/ | diagnose accuracy regressions, drift, wrong results, and cross-platform mismatch after successful execution |
-| algorithm-agent | skills/algorithm-agent/ | run a paper-to-factory loop for algorithm adaptation: intake and triage papers, analyze released code, build a code map and patch plan, and prepare verification/readiness handoff |
+| algorithm-agent | skills/algorithm-agent/ | adapt a paper feature or released reference implementation into an existing model codebase, with support for paper intake/triage, released-code analysis, code-map generation, and patch planning before readiness validation |
 | performance-agent | skills/performance-agent/ | diagnose throughput, latency, memory, utilization, dataloader, and communication bottlenecks after the workload already runs |
 
 

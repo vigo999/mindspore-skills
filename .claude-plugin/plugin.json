@@ -1,7 +1,7 @@
 {
   "name": "ms",
   "version": "0.1.0",
-  "description": "Agent Skills for MindSpore deep learning framework development including CPU/GPU/NPU operator building, testing, optimization, model migration, and paper-to-factory algorithm integration workflows",
+  "description": "Agent Skills for MindSpore deep learning framework development including CPU/GPU/NPU operator building, testing, optimization, model migration, and algorithm adaptation with paper intake/triage, released-code analysis, code-map generation, and patch planning support",
   "author": {
     "name": "MindSpore"
   },

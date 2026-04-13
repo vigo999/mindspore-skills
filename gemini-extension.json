@@ -25,7 +25,7 @@
                    },
                    {
                        "name":  "algorithm-agent",
-                       "description":  "Run a paper-to-factory algorithm loop: intake and triage papers, analyze released code, build a code map and patch plan, and prepare the result for readiness validation",
+                       "description":  "Adapt a paper feature or released reference implementation into an existing model codebase, with support for paper intake/triage, released-code analysis, code-map generation, and patch planning before readiness validation",
                        "path":  "skills/algorithm-agent/SKILL.md"
                    },
                    {
