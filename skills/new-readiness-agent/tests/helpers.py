@@ -165,3 +165,58 @@ raise SystemExit(completed.returncode)
         return launcher
     script.chmod(script.stat().st_mode | 0o111)
     return script
+
+
+def make_fake_selected_python_with_torch_autoload_conflict(tmp_path: Path) -> Path:
+    real_python = json.dumps(sys.executable)
+    script = tmp_path / "fake-torch-autoload-python.py"
+    script.write_text(
+        f"""#!/usr/bin/env python3
+import json
+import subprocess
+import sys
+
+REAL_PYTHON = {real_python}
+VERSION_OVERRIDES = {{
+    "torch": "2.8.0",
+    "torch_npu": "2.8.0.post2",
+}}
+
+if len(sys.argv) >= 3 and sys.argv[1] == "-c":
+    code = sys.argv[2]
+    if "platform.python_version" in code and "version_info" in code:
+        print(json.dumps({{"version_info": [3, 10, 20], "version": "3.10.20"}}))
+        raise SystemExit(0)
+    if len(sys.argv) >= 5:
+        mode = sys.argv[3]
+        payload = json.loads(sys.argv[4])
+        if mode == "import":
+            packages = payload.get("packages", [])
+            result = {{"imports": {{}}, "errors": {{}}}}
+            if packages == ["torch", "torch_npu"]:
+                result["imports"]["torch"] = True
+                result["imports"]["torch_npu"] = False
+                result["errors"]["torch_npu"] = "RuntimeError: duplicate triton TORCH_LIBRARY registration"
+            else:
+                for name in packages:
+                    result["imports"][name] = True
+            print(json.dumps(result))
+            raise SystemExit(0)
+        if mode == "package_versions":
+            packages = payload.get("packages", [])
+            print(json.dumps({{"versions": {{name: VERSION_OVERRIDES.get(name, "1.0.0") for name in packages}}, "errors": {{}}}}))
+            raise SystemExit(0)
+    completed = subprocess.run([REAL_PYTHON, *sys.argv[1:]])
+    raise SystemExit(completed.returncode)
+
+completed = subprocess.run([REAL_PYTHON, *sys.argv[1:]])
+raise SystemExit(completed.returncode)
+""",
+        encoding="utf-8",
+    )
+    if os.name == "nt":
+        launcher = tmp_path / "fake-torch-autoload-python.cmd"
+        launcher.write_text(f'@echo off\r\n"{sys.executable}" "%~dp0fake-torch-autoload-python.py" %*\r\n', encoding="utf-8")
+        return launcher
+    script.chmod(script.stat().st_mode | 0o111)
+    return script

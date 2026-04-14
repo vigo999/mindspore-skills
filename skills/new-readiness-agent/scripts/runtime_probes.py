@@ -32,20 +32,21 @@ elif mode == "package_versions":
     packages = payload.get("packages", [])
     result = {"versions": {}, "errors": {}}
     for name in packages:
+        candidates = [name]
+        dashed_name = name.replace("_", "-")
+        if dashed_name not in candidates:
+            candidates.append(dashed_name)
+        version = None
+        for candidate in candidates:
+            try:
+                version = importlib_metadata.version(candidate)
+                break
+            except Exception:
+                continue
         try:
-            module = __import__(name)
-            version = getattr(module, "__version__", None)
             if version is None:
-                candidates = [name]
-                dashed_name = name.replace("_", "-")
-                if dashed_name not in candidates:
-                    candidates.append(dashed_name)
-                for candidate in candidates:
-                    try:
-                        version = importlib_metadata.version(candidate)
-                        break
-                    except Exception:
-                        continue
+                module = __import__(name)
+                version = getattr(module, "__version__", None)
             result["versions"][name] = version
         except Exception as exc:
             result["versions"][name] = None
@@ -96,14 +97,21 @@ def probe_imports(
     python_path: Optional[str],
     probe_env: Optional[Dict[str, str]],
 ) -> Tuple[Dict[str, bool], Dict[str, str], Optional[str]]:
-    result, error = run_json_probe_with_python(python_path, "import", {"packages": packages}, probe_env)
-    imports = result.get("imports") if isinstance(result.get("imports"), dict) else {}
-    errors = result.get("errors") if isinstance(result.get("errors"), dict) else {}
-    normalized_imports = {str(name): bool(value) for name, value in imports.items()}
-    normalized_errors = {str(name): str(value) for name, value in errors.items()}
+    normalized_imports: Dict[str, bool] = {}
+    normalized_errors: Dict[str, str] = {}
+    first_error: Optional[str] = None
     for name in packages:
-        normalized_imports.setdefault(name, False)
-    return normalized_imports, normalized_errors, error
+        result, error = run_json_probe_with_python(python_path, "import", {"packages": [name]}, probe_env)
+        imports = result.get("imports") if isinstance(result.get("imports"), dict) else {}
+        errors = result.get("errors") if isinstance(result.get("errors"), dict) else {}
+        normalized_imports[name] = bool(imports.get(name))
+        if errors.get(name):
+            normalized_errors[name] = str(errors[name])
+        elif error:
+            normalized_errors[name] = str(error)
+            if first_error is None:
+                first_error = error
+    return normalized_imports, normalized_errors, first_error
 
 
 def probe_package_versions(
@@ -111,14 +119,22 @@ def probe_package_versions(
     python_path: Optional[str],
     probe_env: Optional[Dict[str, str]],
 ) -> Tuple[Dict[str, Optional[str]], Dict[str, str], Optional[str]]:
-    result, error = run_json_probe_with_python(python_path, "package_versions", {"packages": packages}, probe_env)
-    versions = result.get("versions") if isinstance(result.get("versions"), dict) else {}
-    errors = result.get("errors") if isinstance(result.get("errors"), dict) else {}
-    normalized_versions = {str(name): (None if value is None else str(value)) for name, value in versions.items()}
-    normalized_errors = {str(name): str(value) for name, value in errors.items()}
+    normalized_versions: Dict[str, Optional[str]] = {}
+    normalized_errors: Dict[str, str] = {}
+    first_error: Optional[str] = None
     for name in packages:
-        normalized_versions.setdefault(name, None)
-    return normalized_versions, normalized_errors, error
+        result, error = run_json_probe_with_python(python_path, "package_versions", {"packages": [name]}, probe_env)
+        versions = result.get("versions") if isinstance(result.get("versions"), dict) else {}
+        errors = result.get("errors") if isinstance(result.get("errors"), dict) else {}
+        value = versions.get(name)
+        normalized_versions[name] = None if value is None else str(value)
+        if errors.get(name):
+            normalized_errors[name] = str(errors[name])
+        elif error:
+            normalized_errors[name] = str(error)
+            if first_error is None:
+                first_error = error
+    return normalized_versions, normalized_errors, first_error
 
 
 def make_check(

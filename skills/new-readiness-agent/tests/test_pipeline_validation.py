@@ -4,7 +4,15 @@ from pathlib import Path
 
 import pytest
 
-from .helpers import check_by_id, make_fake_selected_python_requiring_runtime_env, make_fake_selected_python_with_import_error, run_pipeline
+from runtime_env import detect_ascend_runtime
+
+from .helpers import (
+    check_by_id,
+    make_fake_selected_python_requiring_runtime_env,
+    make_fake_selected_python_with_import_error,
+    make_fake_selected_python_with_torch_autoload_conflict,
+    run_pipeline,
+)
 
 
 def test_pipeline_blocks_when_framework_import_fails_at_runtime(tmp_path: Path):
@@ -136,3 +144,64 @@ def test_pipeline_sources_cann_script_on_top_of_selected_runtime_environment(tmp
     assert compatibility_check["status"] == "ok"
     assert verdict["evidence_summary"]["package_versions"]["torch"] == "2.8.0"
     assert verdict["evidence_summary"]["package_versions"]["torch_npu"] == "2.8.0.post2"
+
+
+def test_pipeline_probes_pta_packages_in_isolated_processes(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "train.py").write_text("import torch\nimport torch_npu\n", encoding="utf-8")
+    (workspace / "train.yaml").write_text("model_name_or_path: model\ntrain_file: dataset/sample.txt\n", encoding="utf-8")
+    (workspace / "model").mkdir()
+    (workspace / "dataset").mkdir()
+    (workspace / "dataset" / "sample.txt").write_text("hello\n", encoding="utf-8")
+    cann_root = tmp_path / "cann"
+    cann_root.mkdir()
+    (cann_root / "version.cfg").write_text("version=8.5.0\n", encoding="utf-8")
+    selected_python = make_fake_selected_python_with_torch_autoload_conflict(tmp_path)
+    output_dir = tmp_path / "out"
+
+    run_pipeline(
+        "--working-dir",
+        str(workspace),
+        "--output-dir",
+        str(output_dir),
+        "--target",
+        "training",
+        "--framework-hint",
+        "pta",
+        "--launcher-hint",
+        "python",
+        "--selected-python",
+        str(selected_python),
+        "--entry-script",
+        "train.py",
+        "--config-path",
+        "train.yaml",
+        "--model-path",
+        "model",
+        "--dataset-path",
+        "dataset",
+        "--cann-path",
+        str(cann_root),
+        cwd=workspace,
+    )
+
+    verdict = json.loads((output_dir / "meta" / "readiness-verdict.json").read_text(encoding="utf-8"))
+    framework_importability = check_by_id(verdict, "framework-importability")
+    compatibility_check = check_by_id(verdict, "framework-compatibility")
+
+    assert verdict["status"] == "READY"
+    assert framework_importability["status"] == "ok"
+    assert compatibility_check["status"] == "ok"
+
+
+def test_detect_ascend_runtime_accepts_explicit_set_env_script_path(tmp_path: Path):
+    script_path = tmp_path / "cann" / "ascend-toolkit" / "set_env.sh"
+    script_path.parent.mkdir(parents=True)
+    script_path.write_text("export ASCEND_HOME_PATH=/fake/ascend\n", encoding="utf-8")
+
+    system_layer = detect_ascend_runtime({"cann_path": str(script_path)})
+
+    assert system_layer["ascend_env_script_present"] is True
+    assert system_layer["ascend_env_script_path"] == str(script_path)
+    assert system_layer["ascend_env_selection_source"] == "explicit_cann_path"

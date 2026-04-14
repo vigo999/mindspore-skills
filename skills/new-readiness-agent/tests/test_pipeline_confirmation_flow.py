@@ -72,6 +72,7 @@ def test_pipeline_offers_catalog_options_when_workspace_has_no_runtime_evidence(
     assert "training" in current_options(summary)
     assert "inference" in current_options(summary)
     assert "__unknown__" in current_options(summary)
+    assert summary["current_confirmation"]["options"][-1]["label"] == "skip check for now"
 
 
 def test_pipeline_advances_one_confirmation_step_at_a_time(tmp_path: Path):

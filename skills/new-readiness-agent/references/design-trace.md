@@ -703,3 +703,60 @@ skill 自己的控制 Python 和被认证的运行时环境不是一回事。真
 - 不让 probe 再退回到只看 `find_spec` 的浅检查
 - 不为了宿主展示层临时需要，扩张 lock schema
 - 不为测试方便回退到把逻辑塞回 `new_readiness_core.py`
+
+### 12.5 PTA probe 不能把 `torch` 和 `torch_npu` 绑在同一个导入进程里
+
+后续真实测试又暴露出一个 PTA 特有问题：
+
+- 某些 PyTorch 版本会在 `import torch` 时自动加载 `torch_npu` backend
+- 如果 readiness probe 再在同一个子进程里继续 `import torch_npu`
+- 就可能触发重复注册或 backend autoload 冲突，形成假阴性
+
+这类报错看起来像：
+
+- `duplicate triton TORCH_LIBRARY registration`
+- `Failed to load the backend extension: torch_npu`
+
+修正策略：
+
+- `probe_imports()` 对包做逐个独立子进程探测
+- PTA 包之间不共享同一个导入进程
+- `probe_package_versions()` 优先读包元数据，再回退到 import
+
+这样即使 import 失败，也尽量还能拿到已安装版本，避免 compatibility 退化成 “version unavailable”。
+
+### 12.6 `__unknown__` 的产品语义更接近 “skip check for now”
+
+逐项确认里最后一个选项以前显示为 `unknown / not sure`。从用户语义上看，这容易让人以为是在回答“我不知道”，而不是“我现在先跳过这项确认”。
+
+因此当前 trace 约定：
+
+- 内部值仍保留 `__unknown__`
+- 但用户可见 label 改为 `skip check for now`
+
+这样既不改内部协议，也更符合逐项 readiness confirmation 的真实行为。
+
+### 12.7 显式传入 `set_env.sh` 路径时，不能只按目录搜索 CANN
+
+又一次真实测试说明，PTA/NPU 路径里最先要保证的是：如果用户已经明确提供了 `.../set_env.sh`，probe 前必须真的把它识别成可 source 的 Ascend 脚本。
+
+这里踩过的坑是：
+
+- `normalize_cann_path()` 本身支持把 `set_env.sh` 文件路径归一成候选
+- 但 `candidate_ascend_env_scripts()` 之前只把 `cann_path` 当成“搜索根”
+- 后续又调用 `search_root_for_ascend_env_scripts()`，而这个函数要求 root 是目录
+- 所以当 `cann_path` 直接是文件路径时，候选会被静默丢掉
+- 最终 `resolve_runtime_environment()` 拿不到 `ascend_env_script_path`，就不会 source 该脚本
+
+这会直接表现为：
+
+- 没提前 source `set_env.sh` 时，`import torch` 触发 `torch_npu` backend autoload
+- 因缺失 `libhccl.so` 等动态库而失败
+
+修正策略：
+
+- 对显式 `cann_path` 先做一轮直接候选收集
+- 如果它本身就是 `set_env.sh`，优先把它纳入 `ascend_env_script_path`
+- 不要把“显式文件路径”退化成“从该路径再按目录搜索”
+
+这条优先级应始终高于“当前环境似乎已有 Ascend 痕迹”的弱证据。

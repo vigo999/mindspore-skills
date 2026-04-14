@@ -148,7 +148,7 @@ def build_numbered_options(
         options.append(
             {
                 "value": "__unknown__",
-                "label": "unknown / not sure",
+                "label": "skip check for now",
                 "confidence": 0.0,
                 "selection_source": "manual",
             }
@@ -220,7 +220,7 @@ def build_asset_confirmation_options(bundle: Dict[str, object], *, allow_free_te
     options.append(
         {
             "value": "__unknown__",
-            "label": "unknown / not sure",
+            "label": "skip check for now",
             "confidence": 0.0,
             "selection_source": "manual",
         }
@@ -504,7 +504,7 @@ def build_runtime_environment_options(scan: Dict[str, object]) -> List[Dict[str,
     options.append(
         {
             "value": "__unknown__",
-            "label": "unknown / not sure",
+            "label": "skip check for now",
             "confidence": 0.0,
             "selection_source": "manual",
         }

@@ -90,6 +90,15 @@ def derive_current_env_script_candidates() -> List[Path]:
     return sorted(candidates, key=rank_ascend_env_script)
 
 
+def explicit_cann_script_candidates(cann_path: Optional[str]) -> List[Path]:
+    candidates: List[Path] = []
+    seen = set()
+    for candidate in normalize_cann_path(cann_path):
+        if candidate.exists():
+            add_candidate_path(candidate, seen, candidates)
+    return sorted(candidates, key=rank_ascend_env_script)
+
+
 def search_root_for_ascend_env_scripts(root: Path, limit: int) -> List[Path]:
     if not root.exists() or not root.is_dir() or limit <= 0:
         return []
@@ -163,9 +172,12 @@ def bounded_search_roots(cann_path: Optional[str]) -> List[Path]:
 
 
 def candidate_ascend_env_scripts(cann_path: Optional[str] = None) -> Tuple[List[Path], str]:
+    explicit_candidates = explicit_cann_script_candidates(cann_path)
     current_candidates = derive_current_env_script_candidates()
     candidates: List[Path] = []
     seen = set()
+    for candidate in explicit_candidates:
+        add_candidate_path(candidate, seen, candidates)
     for candidate in current_candidates:
         add_candidate_path(candidate, seen, candidates)
     for root in bounded_search_roots(cann_path):
