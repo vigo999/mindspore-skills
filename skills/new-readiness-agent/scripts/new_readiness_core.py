@@ -3,7 +3,8 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from types import SimpleNamespace
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from ascend_compat import assess_installed_framework_compatibility
 from asset_discovery import discover_asset_catalog
@@ -662,20 +663,135 @@ def build_required_packages(
     return sorted(packages)
 
 
+def merge_selected_scan_candidate(
+    field_candidates: List[Dict[str, object]],
+    selected_value: Optional[str],
+    *,
+    label: str,
+    root: Path,
+) -> List[Dict[str, object]]:
+    normalized_value = str(selected_value or "").strip()
+    if not normalized_value:
+        return list(field_candidates)
+    resolved_path = resolve_optional_path(normalized_value, root)
+    candidate_value = str(resolved_path or normalized_value)
+    synthesized = candidate(
+        candidate_value,
+        label,
+        "profile_selection",
+        0.99,
+        exists=bool(resolved_path and resolved_path.exists()),
+    )
+    return dedupe_candidates([synthesized, *list(field_candidates)])
+
+
+def selected_local_asset_path(asset_choice: Dict[str, object]) -> Optional[str]:
+    selected_asset = asset_choice.get("asset") if isinstance(asset_choice.get("asset"), dict) else {}
+    if str(selected_asset.get("source_type") or "") != "local_path":
+        return None
+    locator = selected_asset.get("locator") if isinstance(selected_asset.get("locator"), dict) else {}
+    raw_path = str(locator.get("path") or "").strip()
+    return raw_path or None
+
+
+def asset_bundle_from_catalog(asset_catalog: Dict[str, object], kind: str) -> Dict[str, object]:
+    assets = asset_catalog.get("assets") if isinstance(asset_catalog.get("assets"), dict) else {}
+    bundle = assets.get(kind)
+    if isinstance(bundle, dict):
+        return bundle
+    return {"requirement": {"kind": kind, "required": False, "reason": ""}, "candidates": []}
+
+
+def refresh_asset_catalog(
+    scan: Dict[str, object],
+    root: Path,
+    args: object,
+    *,
+    target_value: Optional[str],
+    entry_value: Optional[str],
+    config_value: Optional[str] = None,
+) -> Dict[str, object]:
+    files = [Path(item) for item in list(scan.get("files") or [])]
+    entry_candidates = merge_selected_scan_candidate(
+        list(scan.get("entry_candidates") or []),
+        entry_value,
+        label=f"selected entry {Path(str(entry_value)).name}" if entry_value else "selected entry",
+        root=root,
+    )
+    config_candidates = merge_selected_scan_candidate(
+        list(scan.get("config_candidates") or []),
+        config_value,
+        label=f"selected config {Path(str(config_value)).name}" if config_value else "selected config",
+        root=root,
+    )
+    asset_args = SimpleNamespace(**vars(args))
+    asset_args.entry_script = entry_value or getattr(args, "entry_script", None)
+    asset_args.config_path = config_value or getattr(args, "config_path", None)
+    return discover_asset_catalog(
+        root=root,
+        files=files,
+        entry_candidates=entry_candidates,
+        config_candidates=config_candidates,
+        args=asset_args,
+        target_hint=str(target_value) if target_value not in {None, "", "auto"} else None,
+    )
+
+
+def resolve_profile_assets(
+    scan: Dict[str, object],
+    root: Path,
+    args: object,
+    *,
+    cached_confirmation: Dict[str, object],
+    confirmation_overrides: Dict[str, str],
+    target_value: Optional[str],
+    entry_value: Optional[str],
+) -> Tuple[Dict[str, object], Dict[str, object], Dict[str, object], Dict[str, object], Dict[str, object]]:
+    refreshed_asset_catalog = refresh_asset_catalog(
+        scan,
+        root,
+        args,
+        target_value=target_value,
+        entry_value=entry_value,
+        config_value=getattr(args, "config_path", None),
+    )
+    config_choice = choose_asset("config", cached_confirmation, asset_bundle_from_catalog(refreshed_asset_catalog, "config"), confirmation_overrides.get("config_asset"))
+
+    selected_config_path = selected_local_asset_path(config_choice)
+    if selected_config_path:
+        refreshed_asset_catalog = refresh_asset_catalog(
+            scan,
+            root,
+            args,
+            target_value=target_value,
+            entry_value=entry_value,
+            config_value=selected_config_path,
+        )
+        config_choice = choose_asset("config", cached_confirmation, asset_bundle_from_catalog(refreshed_asset_catalog, "config"), confirmation_overrides.get("config_asset"))
+
+    model_choice = choose_asset("model", cached_confirmation, asset_bundle_from_catalog(refreshed_asset_catalog, "model"), confirmation_overrides.get("model_asset"))
+    dataset_choice = choose_asset("dataset", cached_confirmation, asset_bundle_from_catalog(refreshed_asset_catalog, "dataset"), confirmation_overrides.get("dataset_asset"))
+    checkpoint_choice = choose_asset("checkpoint", cached_confirmation, asset_bundle_from_catalog(refreshed_asset_catalog, "checkpoint"), confirmation_overrides.get("checkpoint_asset"))
+    return refreshed_asset_catalog, config_choice, model_choice, dataset_choice, checkpoint_choice
+
+
 def analyze_workspace(root: Path, args: object) -> Dict[str, object]:
     files = list_files(root)
     launcher_candidates = build_launcher_candidates(root, args, files)
     entry_candidates = build_entry_candidates(root, args, files, launcher_candidates)
     config_candidates = build_config_candidates(root, args, files, launcher_candidates)
-    dependency_text = collect_dependency_text(files)
+    initial_target_hint = getattr(args, "target", None)
+    if initial_target_hint not in {"training", "inference"}:
+        initial_target_hint = None
     asset_catalog = discover_asset_catalog(
         root=root,
         files=files,
         entry_candidates=entry_candidates,
         config_candidates=config_candidates,
         args=args,
-        target_hint=getattr(args, "target", None) if getattr(args, "target", None) != "auto" else None,
+        target_hint=initial_target_hint,
     )
+    dependency_text = collect_dependency_text(files)
     target_candidates = build_target_candidates(args, entry_candidates, launcher_candidates, config_candidates, asset_catalog, root)
     framework_candidates = build_framework_candidates(args, entry_candidates, launcher_candidates, config_candidates, dependency_text, root)
     launch_command_candidates = [item for item in launcher_candidates if item.get("command_template")]
@@ -712,10 +828,6 @@ def finalize_profile(scan: Dict[str, object], root: Path, args: object) -> Dict[
     framework_choice = choose_value("framework", getattr(args, "framework_hint", None) if getattr(args, "framework_hint", None) != "auto" else None, cached_confirmation, list(scan["framework_candidates"]), confirmation_overrides.get("framework"))
     launcher_choice = choose_value("launcher", getattr(args, "launcher_hint", None) if getattr(args, "launcher_hint", None) != "auto" else None, cached_confirmation, list(scan["launcher_candidates"]), confirmation_overrides.get("launcher"))
     entry_choice = choose_value("entry_script", getattr(args, "entry_script", None), cached_confirmation, list(scan["entry_candidates"]), confirmation_overrides.get("entry_script"))
-    config_choice = choose_asset("config", cached_confirmation, asset_bundle(scan, "config"), confirmation_overrides.get("config_asset"))
-    model_choice = choose_asset("model", cached_confirmation, asset_bundle(scan, "model"), confirmation_overrides.get("model_asset"))
-    dataset_choice = choose_asset("dataset", cached_confirmation, asset_bundle(scan, "dataset"), confirmation_overrides.get("dataset_asset"))
-    checkpoint_choice = choose_asset("checkpoint", cached_confirmation, asset_bundle(scan, "checkpoint"), confirmation_overrides.get("checkpoint_asset"))
     cann_choice = choose_value("cann_path", getattr(args, "cann_path", None), cached_confirmation, list(scan["cann"]["candidates"]), confirmation_overrides.get("cann_path"))
     extra_context_choice = choose_value("extra_context", getattr(args, "extra_context", None), cached_confirmation, [], confirmation_overrides.get("extra_context"))
     environment_choice = choose_environment(root, args, cached_confirmation, dict(scan["environment"]), confirmation_overrides.get("runtime_environment"))
@@ -739,6 +851,17 @@ def finalize_profile(scan: Dict[str, object], root: Path, args: object) -> Dict[
         (selected_launcher_candidate and selected_launcher_candidate.get("uses_llamafactory"))
         or str(command_choice.get("value") or "").lower().find("llamafactory") >= 0
     )
+
+    refreshed_asset_catalog, config_choice, model_choice, dataset_choice, checkpoint_choice = resolve_profile_assets(
+        scan,
+        root,
+        args,
+        cached_confirmation=cached_confirmation,
+        confirmation_overrides=confirmation_overrides,
+        target_value=target_choice["value"],
+        entry_value=entry_choice["value"],
+    )
+    scan["asset_catalog"] = refreshed_asset_catalog
 
     required_packages = build_required_packages(
         str(framework_choice.get("value") or ""),

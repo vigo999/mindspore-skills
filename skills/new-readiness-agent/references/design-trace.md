@@ -760,3 +760,44 @@ skill 自己的控制 Python 和被认证的运行时环境不是一回事。真
 - 不要把“显式文件路径”退化成“从该路径再按目录搜索”
 
 这条优先级应始终高于“当前环境似乎已有 Ascend 痕迹”的弱证据。
+
+### 12.8 `discover_asset_catalog()` 仍属于 analyzer，但必须按依赖分阶段执行
+
+又一次真实测试暴露出一个依赖时机问题：
+
+- `discover_asset_catalog()` 在架构归属上属于 workspace analyzer
+- 但它生成的 `model/dataset/config/checkpoint` requirement 和 candidate，实际上依赖更上游的运行画像
+- 尤其是：
+  - `target` 会影响 `model/dataset` 是否 required
+  - `entry_script` 会影响脚本内 `from_pretrained(...)` / `load_dataset(...)` / inline config 的识别结果
+  - 若用户最终确认了本地 `config` 文件，也可能进一步补强 model/dataset hint
+
+旧问题出在：
+
+- `analyze_workspace()` 一开始就跑 `discover_asset_catalog()`
+- 当时只能拿到原始 CLI args，拿不到后续逐项确认出来的 `target` / `entry_script`
+- 结果 `active_confirmation_sequence()` 看见的 asset bundle 还是旧的
+- `model_asset` / `dataset_asset` 会因为 `required=false` 且 `candidates=[]` 被静默跳过
+
+这次的修正原则是：
+
+- 不把 `discover_asset_catalog()` 从 analyzer 层移走
+- 但把 analyzer 视为两段：
+  - base scan：先扫 launcher / framework / entry / environment / cann 等基础候选
+  - asset enrichment：在 `target`、`entry_script`（以及必要时本地 `config`）收敛后，再刷新 asset catalog
+
+代码层面的落点：
+
+- `analyze_workspace()` 保留一次初始 `discover_asset_catalog()`，用于早期 target inference 和基础资产线索
+- `finalize_profile()` 在 base profile 收敛后，调用 `resolve_profile_assets()`
+- `resolve_profile_assets()` 会基于已确认的 `target + entry_script` 重新跑 `discover_asset_catalog()`
+- 如果最终选中的 `config_asset` 是本地文件，再做第二次 asset refresh
+
+以后如果再改确认链，要记住这条依赖顺序：
+
+`target / entry_script / local config`
+-> refresh asset catalog
+-> choose config/model/dataset/checkpoint
+-> build confirmation state
+
+不能再回退到“资产目录只在最早扫描时生成一次”的做法。

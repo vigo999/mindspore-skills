@@ -165,3 +165,82 @@ def test_pipeline_treats_inline_config_as_a_valid_asset(tmp_path: Path, fake_sel
     verdict = json.loads((output_dir / "meta" / "readiness-verdict.json").read_text(encoding="utf-8"))
     config_check = check_by_id(verdict, "workspace-config-asset")
     assert config_check["status"] == "ok"
+
+
+def test_pipeline_refreshes_asset_catalog_after_confirming_target_and_entry(tmp_path: Path, fake_selected_python: Path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    entry_script = workspace / "train_qwen3.py"
+    entry_script.write_text(
+        "\n".join(
+            [
+                "from datasets import load_dataset",
+                "from transformers import AutoModelForCausalLM, TrainingArguments",
+                'TrainingArguments(output_dir="qwen3-finetuned")',
+                'dataset = load_dataset("karthiksagarn/astro_horoscope", split="train")',
+                'model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-0.6B")',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    common_args = (
+        "--working-dir",
+        str(workspace),
+        "--framework-hint",
+        "pta",
+        "--launcher-hint",
+        "python",
+        "--selected-python",
+        str(fake_selected_python),
+    )
+
+    first = stdout_payload(run_pipeline(*common_args, cwd=workspace))
+    second = stdout_payload(run_pipeline(*common_args, "--confirm", "target=training", cwd=workspace))
+    third = stdout_payload(
+        run_pipeline(
+            *common_args,
+            "--confirm",
+            "target=training",
+            "--confirm",
+            f"entry_script={entry_script}",
+            cwd=workspace,
+        )
+    )
+    fourth = stdout_payload(
+        run_pipeline(
+            *common_args,
+            "--confirm",
+            "target=training",
+            "--confirm",
+            f"entry_script={entry_script}",
+            "--confirm",
+            "config_asset=inline_config",
+            cwd=workspace,
+        )
+    )
+    fifth = stdout_payload(
+        run_pipeline(
+            *common_args,
+            "--confirm",
+            "target=training",
+            "--confirm",
+            f"entry_script={entry_script}",
+            "--confirm",
+            "config_asset=inline_config",
+            "--confirm",
+            "model_asset=hf_hub:Qwen/Qwen3-0.6B",
+            cwd=workspace,
+        )
+    )
+
+    assert current_field(first) == "target"
+    assert current_field(second) == "entry_script"
+    assert current_field(third) == "config_asset"
+    assert current_field(fourth) == "model_asset"
+    assert any(
+        str(option.get("source_type")) in {"hf_hub", "script_managed_remote"}
+        for option in fourth["current_confirmation"]["options"]
+    )
+    assert current_field(fifth) == "dataset_asset"
