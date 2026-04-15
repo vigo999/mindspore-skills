@@ -260,6 +260,12 @@ Route rules:
   case is used to calibrate the intake rubric and combined helper scaffold.
 - Keep the first phase-1 materials compact; do not split TransMLA into a full
   route-pack directory unless reuse pressure is proven.
+- A successful phase-1 bounded TransMLA result may stop at a default-off,
+  no-remap patch that is regeneration-backed, import/init-valid, and
+  minimal-forward-valid.
+- Do not treat that bounded result as a claim of full TransMLA migration,
+  checkpoint-remap compatibility, fuller MLA semantics, broader runtime
+  integration, or MindSpore-native completion.
 
 ## Stage 3. Patch Builder
 

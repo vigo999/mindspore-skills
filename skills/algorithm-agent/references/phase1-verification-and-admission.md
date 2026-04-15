@@ -38,6 +38,19 @@ Each slot must have explicit expected evidence before it can be treated as
 complete. Unrunnable slots must be recorded as `blocked` or `not_run`; they must
 never be implied as `pass`.
 
+### Bounded proving-case result rule
+
+A successful phase-1 bounded proving-case result may stop once the selected
+scope has recorded the expected evidence for that bounded rung. For the current
+TransMLA proving case, that bounded success line is: default-off behavior
+preserved, no-remap scope preserved, regeneration-backed patch status, passing
+import/init, and passing minimal forward on the selected runtime path.
+
+Such a result should be recorded as a successful bounded proving-case outcome,
+not as a claim of full migration completeness. Unless separately validated, it
+must not be described as checkpoint-remap-compatible, fuller-MLA-complete,
+broader-runtime-complete, or MindSpore-native-complete.
+
 ## Handoff Rules
 
 Hand off to:
