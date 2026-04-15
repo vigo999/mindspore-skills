@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 import argparse
-import csv
 import json
+import sys
 from pathlib import Path
 from typing import Optional
 
-from perf_common import normalize_key, parse_number, stage_to_domain, write_json
+from perf_common import load_csv_rows, normalize_key, parse_number, stage_to_domain, write_json
 
 
 STEP_ID_KEYS = {"step_id", "step", "iteration", "iter", "id"}
@@ -33,18 +33,11 @@ def classify_stage(header: str) -> Optional[str]:
     return None
 
 
-def load_rows(path: Path) -> list[dict[str, str]]:
-    with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
-        reader = csv.DictReader(handle)
-        if not reader.fieldnames:
-            return []
-        return [dict(row) for row in reader]
-
-
 def build_summary(path: Path) -> dict:
-    rows = load_rows(path)
+    rows = load_csv_rows(path)
     if not rows:
-        raise SystemExit(f"No rows were found in {path}")
+        print(f"No rows were found in {path}", file=sys.stderr)
+        raise SystemExit(1)
 
     stage_totals: dict[str, float] = {}
     step_totals: list[float] = []
@@ -88,7 +81,33 @@ def build_summary(path: Path) -> dict:
         if step_totals
         else 0.0
     )
-    coefficient_of_variation = (variance ** 0.5) / mean_step if mean_step else 0.0
+    std_step = variance ** 0.5
+    coefficient_of_variation = std_step / mean_step if mean_step else 0.0
+
+    # Jitter analysis
+    sorted_steps = sorted(step_totals)
+    n_steps = len(sorted_steps)
+    jitter = None
+    if n_steps >= 2:
+        p50 = sorted_steps[n_steps // 2]
+        # Note: when sample count is too low for reliable percentile estimation,
+        # fall back to the maximum value (conservative upper bound).
+        p95 = sorted_steps[int(n_steps * 0.95)] if n_steps >= 20 else sorted_steps[-1]
+        p99 = sorted_steps[int(n_steps * 0.99)] if n_steps >= 100 else sorted_steps[-1]
+        outlier_steps = [
+            i for i, v in enumerate(step_totals)
+            if abs(v - mean_step) > 2 * std_step
+        ]
+        jitter = {
+            "cv": round(coefficient_of_variation, 4),
+            "status": "stable" if coefficient_of_variation <= 0.10 else ("variable" if coefficient_of_variation <= 0.20 else "unstable"),
+            "outlier_steps": outlier_steps[:10],
+            "p50_ms": round(p50, 3),
+            "p95_ms": round(p95, 3),
+            "p99_ms": round(p99, 3),
+        }
+        if n_steps < 20:
+            jitter["note"] = f"Only {n_steps} steps; p95/p99 are upper bounds (max value), not true percentiles"
 
     dominant_stage = None
     if dominant_name is not None:
@@ -111,6 +130,7 @@ def build_summary(path: Path) -> dict:
             key: round(value / steps_analyzed, 3) for key, value in sorted(stage_totals.items())
         },
         "dominant_stage": dominant_stage,
+        "jitter": jitter,
         "likely_domains": [dominant_stage["domain"]] if dominant_stage and dominant_stage["domain"] else [],
         "next_action": (
             f"Validate the {dominant_stage['name']} stage against other summaries before choosing the first optimization."
@@ -127,7 +147,8 @@ def default_step_trace_path(trace_root: Path) -> Path:
     matches = sorted(trace_root.glob("**/ASCEND_PROFILER_OUTPUT/step_trace_time.csv"))
     if matches:
         return matches[0]
-    raise SystemExit(f"step_trace_time.csv was not found under {trace_root}")
+    print(f"step_trace_time.csv was not found under {trace_root}", file=sys.stderr)
+    raise SystemExit(1)
 
 
 def main() -> int:
@@ -138,7 +159,8 @@ def main() -> int:
     args = parser.parse_args()
 
     if not args.trace_root and not args.input_csv:
-        raise SystemExit("Either --trace-root or --input-csv is required.")
+        print("Either --trace-root or --input-csv is required.", file=sys.stderr)
+        raise SystemExit(1)
 
     input_path = Path(args.input_csv).resolve() if args.input_csv else default_step_trace_path(Path(args.trace_root).resolve())
     summary = build_summary(input_path)

@@ -46,6 +46,23 @@ def recent_files(root: Path, limit: int) -> list[Path]:
         for path in root.rglob("*")
         if path.is_file() and not any(part in IGNORE_DIRS for part in path.parts)
     ]
+    # Sort by mtime but cap stat() calls to avoid O(large_workspace) cost.
+    # Pre-collect (mtime, path) only up to a reasonable ceiling.
+    ceiling = limit * 10
+    if len(files) > ceiling:
+        # Rough cut: keep only files whose name suggests recency signals.
+        # This avoids stat-ing thousands of irrelevant files.
+        scored = []
+        for path in files:
+            name = path.name.lower()
+            bonus = 0
+            if path.suffix in {".py", ".sh"}:
+                bonus += 2
+            if any(token in name for token in ("train", "run", "log", "prof", "trace", "config")):
+                bonus += 1
+            scored.append((bonus, path))
+        scored.sort(key=lambda item: item[0], reverse=True)
+        files = [p for _, p in scored[:ceiling]]
     files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
     return files[:limit]
 

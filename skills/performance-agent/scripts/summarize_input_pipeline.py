@@ -1,19 +1,11 @@
 #!/usr/bin/env python3
 import argparse
-import csv
 import json
+import sys
 from pathlib import Path
 from typing import Optional
 
-from perf_common import normalize_key, parse_number, read_json, write_json
-
-
-def load_csv_rows(path: Path) -> list[dict[str, str]]:
-    with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
-        reader = csv.DictReader(handle)
-        if not reader.fieldnames:
-            return []
-        return [dict(row) for row in reader]
+from perf_common import load_csv_rows, normalize_key, parse_number, read_json, write_json
 
 
 def infer_indicators_from_csv(rows: list[dict[str, str]]) -> dict:
@@ -105,7 +97,8 @@ def main() -> int:
         pipeline_json = pipeline_json or inferred_pipeline_json
 
     if not any(path and path.exists() for path in (dataset_csv, pipeline_csv, pipeline_json)):
-        raise SystemExit("No dataset or minddata pipeline summary files were found.")
+        print("No dataset or minddata pipeline summary files were found.", file=sys.stderr)
+        raise SystemExit(1)
 
     csv_indicators = {"queue_empty_percent": None, "wait_time_ms": None, "dataset_stage_time_ms": None}
     if dataset_csv and dataset_csv.exists():

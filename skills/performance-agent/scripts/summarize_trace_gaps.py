@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from perf_common import normalize_key, parse_number, read_json, stage_to_domain, write_json
@@ -106,7 +107,8 @@ def default_trace_view_path(trace_root: Path) -> Path:
     matches = sorted(trace_root.glob("**/ASCEND_PROFILER_OUTPUT/trace_view.json"))
     if matches:
         return matches[0]
-    raise SystemExit(f"trace_view.json was not found under {trace_root}")
+    print(f"trace_view.json was not found under {trace_root}", file=sys.stderr)
+    raise SystemExit(1)
 
 
 def main() -> int:
@@ -117,7 +119,8 @@ def main() -> int:
     args = parser.parse_args()
 
     if not args.trace_root and not args.trace_json:
-        raise SystemExit("Either --trace-root or --trace-json is required.")
+        print("Either --trace-root or --trace-json is required.", file=sys.stderr)
+        raise SystemExit(1)
 
     trace_path = Path(args.trace_json).resolve() if args.trace_json else default_trace_view_path(Path(args.trace_root).resolve())
     events = iter_events(read_json(trace_path))

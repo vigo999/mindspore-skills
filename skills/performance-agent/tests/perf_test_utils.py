@@ -1,5 +1,19 @@
 import json
+import subprocess
+import sys
 from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS = ROOT / "scripts"
+
+
+def run_script(script_name: str, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run a script from the scripts/ directory as a subprocess."""
+    return subprocess.run(
+        [sys.executable, str(SCRIPTS / script_name), *args],
+        check=True, text=True, capture_output=True,
+    )
 
 
 def write_sample_profiler_export(root: Path) -> Path:

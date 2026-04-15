@@ -13,7 +13,7 @@ from perf_common import read_json, write_json, write_text
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 def relative_to_out(path: Path, out_root: Path) -> str:
@@ -22,7 +22,14 @@ def relative_to_out(path: Path, out_root: Path) -> str:
 
 def copy_json_artifact(source: Optional[str], target: Path, fallback):
     if source:
-        payload = read_json(Path(source))
+        source_path = Path(source)
+        if source_path.exists():
+            try:
+                payload = read_json(source_path)
+            except Exception:
+                payload = fallback
+        else:
+            payload = fallback
     else:
         payload = fallback
     write_json(target, payload)
@@ -45,14 +52,23 @@ def copy_summary_artifacts(summary_refs: dict, summaries_root: Path) -> dict[str
 
 def build_env_payload() -> dict:
     git_commit = None
-    repo_root = Path(__file__).resolve().parents[3]
-    try:
-        git_commit = subprocess.check_output(
-            ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
-            text=True,
-        ).strip()
-    except Exception:
-        git_commit = None
+    # Walk upward from this script to find the git repo root, rather than
+    # relying on a fixed number of parent hops that breaks when the file moves.
+    candidate = Path(__file__).resolve().parent
+    for _ in range(8):
+        if (candidate / ".git").exists():
+            try:
+                git_commit = subprocess.check_output(
+                    ["git", "-C", str(candidate), "rev-parse", "HEAD"],
+                    text=True,
+                    timeout=5,
+                ).strip()
+            except Exception:
+                pass
+            break
+        if candidate.parent == candidate:
+            break
+        candidate = candidate.parent
     return {
         "mindspore_version": None,
         "cann_version": None,
@@ -224,7 +240,60 @@ def build_shared_report(
     return report
 
 
-def render_markdown(verdict: dict) -> str:
+def render_suggestions_md(suggestions: list[dict]) -> str:
+    """Render optimization suggestions as markdown."""
+    if not suggestions:
+        return ""
+
+    lines = ["## Optimization Suggestions", ""]
+
+    # Group by priority
+    high = [s for s in suggestions if s.get("priority") == "high"]
+    medium = [s for s in suggestions if s.get("priority") == "medium"]
+    low = [s for s in suggestions if s.get("priority") == "low"]
+
+    for label, group in [("HIGH Priority", high), ("MEDIUM Priority", medium), ("LOW Priority", low)]:
+        if not group:
+            continue
+        lines.append(f"### {label}")
+        lines.append("")
+        for s in group:
+            lines.append(f"#### {s.get('id', 'N/A')}: {s['title']}")
+            lines.append("")
+            lines.append(f"- **Expected Benefit**: {s.get('expected_benefit', 'N/A')}")
+            lines.append(f"- **Trigger**: {s.get('trigger_metric', 'N/A')}")
+            lines.append("")
+            if s.get("actions"):
+                lines.append("**Actions**:")
+                lines.append("")
+                for i, action in enumerate(s["actions"], 1):
+                    lines.append(f"{i}. {action}")
+                lines.append("")
+            if s.get("code_examples"):
+                lines.append("**Code Examples**:")
+                lines.append("")
+                for framework, code in s["code_examples"].items():
+                    lines.append(f"*{framework}*:")
+                    lines.append("```python")
+                    lines.append(code)
+                    lines.append("```")
+                    lines.append("")
+            if s.get("config_examples"):
+                lines.append("**Config Examples**:")
+                lines.append("")
+                for framework, config in s["config_examples"].items():
+                    lines.append(f"*{framework}*:")
+                    lines.append("```")
+                    lines.append(config)
+                    lines.append("```")
+                    lines.append("")
+            lines.append(f"**Validation**: compare {', '.join(s.get('validation_metrics', []))}")
+            lines.append("")
+
+    return "\n".join(lines)
+
+
+def render_markdown(verdict: dict, suggestions: Optional[list[dict]] = None) -> str:
     lines = [
         "# Performance Report",
         "",
@@ -256,6 +325,12 @@ def render_markdown(verdict: dict) -> str:
             lines.append(f"- {metric['metric']}: {metric['before']} -> {metric['after']} ({metric['outcome']})")
     else:
         lines.append("- validation is pending")
+
+    # Insert optimization suggestions between Verify and Artifacts
+    if suggestions:
+        lines.append("")
+        lines.extend(render_suggestions_md(suggestions).split("\n"))
+
     lines.extend(
         [
             "",
@@ -296,6 +371,7 @@ def main() -> int:
     parser.add_argument("--output-verdict-json", help="optional path for performance verdict JSON")
     parser.add_argument("--locate-json", help="optional locator JSON path")
     parser.add_argument("--validation-json", help="optional validation comparison JSON path")
+    parser.add_argument("--suggestions-json", help="optional optimization suggestions JSON path")
     parser.add_argument("--working-dir", default=".", help="workspace root")
     parser.add_argument("--user-problem", default="", help="user problem summary")
     args = parser.parse_args()
@@ -304,6 +380,7 @@ def main() -> int:
     bottlenecks = read_json(Path(args.bottlenecks_json))
     locate = read_json(Path(args.locate_json)) if args.locate_json else {"selected_root": profile.get("trace_root")}
     validation = read_json(Path(args.validation_json)) if args.validation_json else None
+    suggestions = read_json(Path(args.suggestions_json)) if args.suggestions_json else None
 
     output_json = Path(args.output_json).resolve()
     output_md = Path(args.output_md).resolve()
@@ -334,6 +411,9 @@ def main() -> int:
     verdict = build_verdict(copied_locator, copied_profile, copied_bottlenecks, copied_validation)
     verdict["sources"]["locator_ref"] = str(locator_copy)
     verdict["sources"]["summary_artifacts"] = copied_summaries
+    if suggestions:
+        verdict["optimization_suggestions"] = suggestions.get("suggestions", [])
+        verdict["suggestion_summary"] = suggestions.get("suggestion_summary", {})
 
     extra_artifacts: list[Path] = [locator_copy]
     extra_artifacts.extend(Path(path) for path in copied_summaries.values())
@@ -367,7 +447,12 @@ def main() -> int:
         },
     )
     write_json(output_json, shared_report)
-    write_text(output_md, render_markdown(verdict))
+
+    # Render markdown with suggestions passed directly to render function
+    suggestions_list = verdict.get("optimization_suggestions", [])
+    final_md = render_markdown(verdict, suggestions=suggestions_list)
+
+    write_text(output_md, final_md)
     print(json.dumps({"status": verdict["status"], "run_id": run_id}, indent=2))
     return 0
 
