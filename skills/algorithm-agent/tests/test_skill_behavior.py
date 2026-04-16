@@ -29,6 +29,9 @@ def test_route_selection_and_mhc_pack_are_declared():
     assert "`references/attnres/attnres-implementation-pattern.md`" in text
     assert "`references/attnres/attnres-validation-checklist.md`" in text
     assert "`references/attnres/attnres-qwen3-case-study.md`" in text
+    assert "`references/attnres/mindspore-attnres-implementation-pattern.md`" in text
+    assert "`references/attnres/mindspore-attnres-validation-checklist.md`" in text
+    assert "`references/attnres/mindspore-qwen3-attnres-case-study.md`" in text
 
 
 def test_mindspore_mhc_is_framework_extension_not_new_route():
@@ -40,6 +43,17 @@ def test_mindspore_mhc_is_framework_extension_not_new_route():
     assert "- `attnres`" in text
     assert "- `mhc-mindspore`" not in text
     assert "- `mindspore-mhc`" not in text
+
+
+def test_mindspore_attnres_is_framework_extension_not_new_route():
+    text = SKILL_MD.read_text(encoding="utf-8")
+    assert "If the target codebase is MindSpore or `mindone.transformers`" in text
+    assert "MindSpore Attention Residuals extension pack" in text
+    assert "- `generic-feature`" in text
+    assert "- `mhc`" in text
+    assert "- `attnres`" in text
+    assert "- `attnres-mindspore`" not in text
+    assert "- `mindspore-attnres`" not in text
 
 
 def test_algorithm_agent_remains_top_level_entry():

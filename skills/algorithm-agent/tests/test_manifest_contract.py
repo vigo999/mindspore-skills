@@ -10,7 +10,7 @@ def test_manifest_contract_fields_present():
     assert 'schema_version: "1.1.0"' in text
     assert 'name: "algorithm-agent"' in text
     assert 'display_name: "Algorithm Agent"' in text
-    assert 'version: "0.3.0"' in text
+    assert 'version: "0.4.0"' in text
     assert 'type: "manual"' in text
     assert 'path: "SKILL.md"' in text
     assert 'network: "none"' in text

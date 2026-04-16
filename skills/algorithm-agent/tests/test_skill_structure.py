@@ -27,3 +27,9 @@ def test_attnres_route_pack_exists():
     assert (ROOT / "references" / "attnres" / "attnres-implementation-pattern.md").exists()
     assert (ROOT / "references" / "attnres" / "attnres-validation-checklist.md").exists()
     assert (ROOT / "references" / "attnres" / "attnres-qwen3-case-study.md").exists()
+
+
+def test_mindspore_attnres_extension_pack_exists():
+    assert (ROOT / "references" / "attnres" / "mindspore-attnres-implementation-pattern.md").exists()
+    assert (ROOT / "references" / "attnres" / "mindspore-attnres-validation-checklist.md").exists()
+    assert (ROOT / "references" / "attnres" / "mindspore-qwen3-attnres-case-study.md").exists()
