@@ -21,6 +21,20 @@ VALIDATION_GATE_FIELDS = (
     "cann_path",
 )
 
+PORTABLE_QUESTION_MAX_OPTIONS = 4
+PORTABLE_HEADER_BY_FIELD = {
+    "target": "Target",
+    "launcher": "Launcher",
+    "framework": "Framework",
+    "runtime_environment": "Runtime Env",
+    "entry_script": "Entry Script",
+    "config_asset": "Config",
+    "model_asset": "Model",
+    "dataset_asset": "Dataset",
+    "checkpoint_asset": "Checkpoint",
+    "cann_path": "CANN Path",
+}
+
 CONFIRMATION_SEQUENCE = (
     {
         "field": "target",
@@ -156,6 +170,156 @@ def build_numbered_options(
     for index, option in enumerate(options, start=1):
         option["index"] = index
     return options
+
+
+def is_manual_option(option: Dict[str, object]) -> bool:
+    return str(option.get("value") or "") == "__manual__"
+
+
+def is_unknown_option(option: Dict[str, object]) -> bool:
+    return str(option.get("value") or "") == "__unknown__"
+
+
+def portable_option_label(option: Dict[str, object], *, recommended: bool) -> str:
+    if is_unknown_option(option):
+        return "Unknown / not sure"
+    label = str(option.get("label") or "").strip()
+    if recommended and label and not label.endswith("(Recommended)"):
+        return f"{label} (Recommended)"
+    return label
+
+
+def portable_option_detail(option: Dict[str, object]) -> str:
+    locator = option.get("locator") if isinstance(option.get("locator"), dict) else {}
+    if locator.get("path"):
+        return f"Path: {locator.get('path')}."
+    if locator.get("cache_path"):
+        return f"Cache path: {locator.get('cache_path')}."
+    if locator.get("repo_id"):
+        return f"Repo ID: {locator.get('repo_id')}."
+    if option.get("python_path"):
+        return f"Python: {option.get('python_path')}."
+    if option.get("env_root"):
+        return f"Environment root: {option.get('env_root')}."
+    source_type = str(option.get("source_type") or "").strip()
+    if source_type:
+        return f"Source type: {source_type}."
+    return ""
+
+
+def portable_option_description(option: Dict[str, object], *, recommended: bool) -> str:
+    if is_unknown_option(option):
+        return "Skip confirming this field for now and continue with a lower-confidence readiness result."
+    if is_manual_option(option):
+        return "Use the host's manual-input path to provide a custom value for this field."
+    selection_source = str(option.get("selection_source") or "").strip()
+    if recommended:
+        base = "Recommended based on current workspace evidence."
+    elif selection_source in {"catalog", "catalog_default"}:
+        base = "Available canonical choice from the built-in readiness catalog."
+    elif selection_source in {"cached_confirmation", "explicit_input"}:
+        base = "Previously selected or explicitly supplied runtime value."
+    else:
+        base = "Detected candidate from the current workspace evidence."
+    detail = portable_option_detail(option)
+    if detail:
+        return f"{base} {detail}"
+    return base
+
+
+def uniquify_portable_option_labels(options: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    seen: Dict[str, int] = {}
+    for option in options:
+        label = str(option.get("label") or "").strip()
+        count = seen.get(label, 0)
+        if count > 0:
+            option["label"] = f"{label} [{count + 1}]"
+        seen[label] = count + 1
+    return options
+
+
+def portable_short_header(field_name: str, label: object) -> str:
+    header = PORTABLE_HEADER_BY_FIELD.get(field_name)
+    if header:
+        return header
+    return str(label or field_name).strip()[:12] or "Confirm"
+
+
+def build_portable_question(
+    *,
+    field_name: str,
+    label: object,
+    prompt: object,
+    options: List[Dict[str, object]],
+    recommended_value: object,
+    allow_free_text: bool,
+    manual_hint: object,
+) -> Dict[str, object]:
+    recommended_text = str(recommended_value).strip() if recommended_value is not None else ""
+    recommended_token = recommended_text or None
+    manual_option = next((option for option in options if is_manual_option(option)), None)
+    unknown_option = next((option for option in options if is_unknown_option(option)), None)
+    candidate_options = [option for option in options if not is_manual_option(option) and not is_unknown_option(option)]
+
+    max_candidate_options = PORTABLE_QUESTION_MAX_OPTIONS - (1 if unknown_option else 0)
+    shortlist = list(candidate_options[:max_candidate_options])
+    if recommended_token:
+        recommended_option = next((option for option in candidate_options if str(option.get("value")) == recommended_token), None)
+        if recommended_option is not None:
+            shortlist = [recommended_option] + [option for option in shortlist if option is not recommended_option]
+            shortlist = shortlist[:max_candidate_options]
+
+    portable_options: List[Dict[str, object]] = []
+    for option in shortlist:
+        recommended = recommended_token is not None and str(option.get("value")) == recommended_token
+        portable_options.append(
+            {
+                "value": option.get("value"),
+                "label": portable_option_label(option, recommended=recommended),
+                "description": portable_option_description(option, recommended=recommended),
+                "recommended": recommended,
+                "source_option_index": option.get("index"),
+            }
+        )
+    if unknown_option is not None:
+        portable_options.append(
+            {
+                "value": unknown_option.get("value"),
+                "label": portable_option_label(unknown_option, recommended=False),
+                "description": portable_option_description(unknown_option, recommended=False),
+                "recommended": False,
+                "source_option_index": unknown_option.get("index"),
+            }
+        )
+    if allow_free_text and manual_option is not None and len(portable_options) < 2:
+        portable_options.insert(
+            0,
+            {
+                "value": manual_option.get("value"),
+                "label": "Use manual input",
+                "description": str(manual_hint or portable_option_description(manual_option, recommended=False)).strip(),
+                "recommended": False,
+                "source_option_index": manual_option.get("index"),
+            },
+        )
+
+    portable_options = uniquify_portable_option_labels(portable_options)
+    selection_strategy = "full_projection" if len(options) <= PORTABLE_QUESTION_MAX_OPTIONS else "recommended_first_shortlist"
+    if allow_free_text and manual_option is not None and any(is_manual_option(option) for option in portable_options):
+        selection_strategy = "manual_fallback_projection"
+    return {
+        "header": portable_short_header(field_name, label),
+        "question": str(prompt or "").strip(),
+        "multi_select": False,
+        "options": portable_options,
+        "selection_strategy": selection_strategy,
+        "full_option_count": len(options),
+        "response_binding": {
+            "field": field_name,
+            "cli_flag": "--confirm",
+            "format": f"{field_name}=<value>",
+        },
+    }
 
 
 def load_cached_confirmation(root: Path) -> Dict[str, object]:
@@ -582,6 +746,7 @@ def build_field_confirmation_step(
 
     return {
         "field": field_name,
+        "interaction_mode": "single-field-confirmation",
         "label": definition.get("label"),
         "prompt": definition.get("prompt"),
         "step_number": step_number,
@@ -590,6 +755,15 @@ def build_field_confirmation_step(
         "allow_free_text": bool(definition.get("allow_free_text", True)),
         "manual_hint": definition.get("manual_hint"),
         "options": options,
+        "portable_question": build_portable_question(
+            field_name=field_name,
+            label=definition.get("label"),
+            prompt=definition.get("prompt"),
+            options=options,
+            recommended_value=recommended_value,
+            allow_free_text=bool(definition.get("allow_free_text", True)),
+            manual_hint=definition.get("manual_hint"),
+        ),
     }
 
 

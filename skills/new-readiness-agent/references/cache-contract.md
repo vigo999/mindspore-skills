@@ -41,6 +41,7 @@ confirmation step.
 
 - current phase and whether confirmation is still pending
 - the current per-field confirmation step and remaining confirmation queue
+- the portable structured-question projection for the current step when present
 - final selected target, launcher, framework, and runtime environment
 - final selected assets for config, model, dataset, and checkpoint
 - selected asset source types such as `local_path`, `hf_cache`, `hf_hub`,

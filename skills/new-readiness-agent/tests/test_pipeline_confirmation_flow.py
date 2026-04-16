@@ -28,6 +28,7 @@ def test_pipeline_requires_confirmation_before_final_verdict(tmp_path: Path):
     )
 
     verdict = json.loads((output_dir / "meta" / "readiness-verdict.json").read_text(encoding="utf-8"))
+    confirmation_step = json.loads((output_dir / "artifacts" / "confirmation-step.json").read_text(encoding="utf-8"))
     summary = stdout_payload(completed)
     assert verdict["status"] == "NEEDS_CONFIRMATION"
     assert verdict["phase"] == "awaiting_confirmation"
@@ -41,6 +42,9 @@ def test_pipeline_requires_confirmation_before_final_verdict(tmp_path: Path):
         "lock": "artifacts/workspace-readiness.lock.json",
         "confirmation": "artifacts/confirmation-step.json",
     }
+    assert confirmation_step["portable_question"]["response_binding"]["field"] == "launcher"
+    assert len(confirmation_step["portable_question"]["options"]) <= 4
+    assert "__manual__" not in {str(item.get("value")) for item in confirmation_step["portable_question"]["options"]}
     assert (output_dir / "meta" / "readiness-verdict.json").exists()
     assert (output_dir / "artifacts" / "workspace-readiness.lock.json").exists()
     assert (output_dir / "artifacts" / "confirmation-step.json").exists()
@@ -73,6 +77,12 @@ def test_pipeline_offers_catalog_options_when_workspace_has_no_runtime_evidence(
     assert "inference" in current_options(summary)
     assert "__unknown__" in current_options(summary)
     assert summary["current_confirmation"]["options"][-1]["label"] == "skip check for now"
+    portable_question = summary["current_confirmation"]["portable_question"]
+    portable_values = [str(option.get("value")) for option in portable_question["options"]]
+    assert portable_question["header"] == "Target"
+    assert 2 <= len(portable_values) <= 4
+    assert "__manual__" not in portable_values
+    assert "__unknown__" in portable_values
 
 
 def test_pipeline_advances_one_confirmation_step_at_a_time(tmp_path: Path):

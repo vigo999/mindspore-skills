@@ -30,6 +30,8 @@ The internal verdict must preserve:
 - selected asset source types and locators
 - whether the run is still awaiting user confirmation or already validated
 - the current per-field confirmation step and its numbered options
+- the current step's portable structured-question projection for host-native
+  question tools
 - near-launch validation checks
 - framework compatibility details, including installed versions, local-table
   status, and recommended package specs when available

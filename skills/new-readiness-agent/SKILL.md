@@ -55,6 +55,33 @@ Do not use this skill for:
 - Preserve both detected values and final selected values in artifacts.
 - Refresh the workspace latest cache on every run.
 
+## Structured Confirmation Protocol
+
+When the pipeline returns `NEEDS_CONFIRMATION` or exposes
+`current_confirmation`, treat that artifact as the single source of truth for
+user interaction.
+
+- Use the host platform's native structured question flow when available, for
+  example `AskUserQuestion`.
+- Do not rewrite the confirmation step from scratch when
+  `artifacts/confirmation-step.json` or `current_confirmation` already exist.
+- Ask exactly one field per round.
+- Do not ask the current confirmation step in plain text when a structured
+  multiple-choice question tool is available.
+- Use the portable structured-question projection when present; it is the
+  host-tool-friendly shortlist for the current step.
+- Preserve the full numbered `options` list for reports, debugging, and hosts
+  that do not support the portable projection.
+- Never inject an explicit `Other` option into the portable question. Rely on
+  the host tool's built-in manual-input path when it exists, otherwise fall
+  back to `manual_hint`.
+- Only add a visible manual-entry fallback option when the portable projection
+  would otherwise expose fewer than two visible choices.
+- After the user answers, map the selected value back to
+  `--confirm field=value` and rerun the pipeline.
+- Do not continue past the current decision point until the current field is
+  confirmed or explicitly skipped.
+
 ## Workflow
 
 Run the workflow in this order:
@@ -153,6 +180,10 @@ command path.
 
 Always emit one current confirmation step that includes numbered options,
 `unknown / not sure`, and manual-entry guidance when free text is allowed.
+
+Also emit a portable structured-question projection for the same current step.
+That projection must stay within the common host-tool limit of one question and
+at most four visible options.
 
 If the first run still needs user choices, stop at a confirmation-pending
 result, show only the current step, collect that selection, and rerun the

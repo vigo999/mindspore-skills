@@ -48,11 +48,15 @@ def test_pipeline_surfaces_hf_asset_options_for_script_managed_dataset(tmp_path:
 
     assert current_field(summary) == "dataset_asset"
     options = summary["current_confirmation"]["options"]
+    portable_options = summary["current_confirmation"]["portable_question"]["options"]
     source_types = {str(option.get("source_type")) for option in options if option.get("source_type")}
     assert "hf_cache" in source_types
     assert "hf_hub" in source_types
     assert "script_managed_remote" in source_types
     assert any((option.get("locator") or {}).get("repo_id") == "karthiksagarn/astro_horoscope" for option in options if isinstance(option.get("locator"), dict))
+    assert len(portable_options) <= 4
+    assert "__manual__" not in {str(option.get("value")) for option in portable_options}
+    assert "__unknown__" in {str(option.get("value")) for option in portable_options}
 
 
 def test_pipeline_treats_hf_cache_dataset_as_satisfied_in_final_verdict(tmp_path: Path, fake_selected_python: Path):
@@ -244,3 +248,30 @@ def test_pipeline_refreshes_asset_catalog_after_confirming_target_and_entry(tmp_
         for option in fourth["current_confirmation"]["options"]
     )
     assert current_field(fifth) == "dataset_asset"
+
+
+def test_pipeline_uses_manual_fallback_when_portable_question_has_no_detected_entry_candidate(tmp_path: Path, fake_selected_python: Path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    summary = stdout_payload(
+        run_pipeline(
+            "--working-dir",
+            str(workspace),
+            "--framework-hint",
+            "pta",
+            "--launcher-hint",
+            "python",
+            "--selected-python",
+            str(fake_selected_python),
+            "--confirm",
+            "target=training",
+            cwd=workspace,
+        )
+    )
+
+    assert current_field(summary) == "entry_script"
+    assert {
+        str(option.get("value"))
+        for option in summary["current_confirmation"]["portable_question"]["options"]
+    } == {"__manual__", "__unknown__"}
