@@ -51,6 +51,7 @@ Do not turn route selection into a fifth workflow stage.
 
 Understand the requested feature before planning code changes.
 
+Load `references/feature-analysis.md` for the shared feature-extraction baseline.
 You must identify:
 
 - the feature or trick summary
@@ -108,6 +109,8 @@ Build a structured `FeatureSpec` that includes `integration_route` and
 
 Plan how the feature should fit into the current codebase.
 
+Load `references/integration-planning.md` for the shared planning baseline.
+
 You must inspect the local repository and determine:
 
 - which model or training path is being targeted
@@ -127,6 +130,13 @@ Build an `IntegrationPlan` that records `route_specific_constraints` and
 
 Use the default planning flow for recipe, module, system, or hybrid feature
 patches that do not need a specialized route pack.
+
+For `generic-feature`, use the shared references directly:
+
+- `references/feature-analysis.md`
+- `references/integration-planning.md`
+- `references/patching-rules.md`
+- `references/handoff-and-report.md`
 
 ### `mhc` route
 
@@ -195,6 +205,8 @@ Route rules:
 
 Generate the minimal implementation patch.
 
+Load `references/patching-rules.md` for the shared patch-generation baseline.
+
 You must:
 
 - prefer the smallest change set that expresses the feature clearly
@@ -217,6 +229,8 @@ runtime integration, or paged runtime support unless explicitly proven.
 ## Stage 4. Readiness Handoff and Report
 
 Do not stop after generating the patch.
+
+Load `references/handoff-and-report.md` for the shared handoff baseline.
 
 You must:
 

@@ -1,5 +1,7 @@
 # Phase-1 Verification and Admission
 
+Status: not part of the current live `algorithm-agent` skill flow.
+
 Keep verification scaffold guidance and factory/template admission guidance
 combined in phase 1 unless reuse clearly justifies splitting.
 

@@ -1,5 +1,7 @@
 # Phase-1 Intake and Triage
 
+Status: not part of the current live `algorithm-agent` skill flow.
+
 Keep phase-1 paper intake compact.
 
 This reference combines:
@@ -116,3 +118,4 @@ Use `TransMLA` as the first worked example for calibrating:
 
 Use `mHC` and `AttnRes` as reuse anchors for existing route-pack patterns, not
 as reasons to expand file structure early.
+
