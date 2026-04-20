@@ -10,7 +10,7 @@ def test_manifest_contract_fields_present():
     assert 'schema_version: "1.1.0"' in text
     assert 'name: "algorithm-agent"' in text
     assert 'display_name: "Algorithm Agent"' in text
-    assert 'version: "0.3.0"' in text
+    assert 'version: "0.4.0"' in text
     assert 'type: "manual"' in text
     assert 'path: "SKILL.md"' in text
     assert 'network: "none"' in text
@@ -22,6 +22,8 @@ def test_manifest_declares_route_input_and_output_contract():
     assert 'name: "working_dir"' in text
     assert 'name: "source_text"' in text
     assert 'name: "reference_code_path"' in text
+    assert 'name: "target_framework"' in text
+    assert 'choices: ["auto", "mindspore", "pytorch", "huggingface", "unknown"]' in text
     assert 'name: "route_preference"' in text
     assert 'choices: ["generic-feature", "mhc", "attnres"]' in text
     assert 'report_schema' in text
@@ -30,6 +32,7 @@ def test_manifest_declares_route_input_and_output_contract():
 
 def test_skill_declares_route_specific_plan_fields():
     text = SKILL_MD.read_text(encoding="utf-8")
-    assert "`FeatureSpec` that includes `integration_route` and" in text
+    assert "`FeatureSpec` that includes `integration_route`," in text
     assert "`route_specific_constraints`" in text
     assert "`route_specific_validations`" in text
+    assert "`target_framework`" in text
