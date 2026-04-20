@@ -392,3 +392,20 @@ Do not auto-mutate Factory from this file.
 - description: The requested int4 weight-packing path is not wired up for NPU, so PyTorch dispatch falls back into an unsupported path instead of finding an NPU-specific implementation.
 - fix_summary: Treat this as an operator-support gap first: use the NPU-specific weight-packing path if one exists, or fall back to a supported quantization workflow instead of assuming a generic CANN runtime bug.
 - validation: Check whether the call site can be switched to a supported NPU quantization or packing path and confirm the same dispatcher error disappears.
+
+### native_batch_norm Invstd Contract Mismatch on NPU
+
+- kind: known_issue
+- symptom: failure
+- id_hint: pta-native-batch-norm-invstd-contract-mismatch
+- severity: high
+- lifecycle_state: stable
+- source_kind: bootstrap
+- confidence_level: bootstrap
+- tags: [pta, torch_npu, batchnorm, instance_norm, gradients, cann, op-plugin]
+- affects_platforms: [ascend]
+- affects_operators: [native_batch_norm, native_batch_norm_backward]
+- detection_pattern: "test_instance_norm_model_num_dim_[123]_npu|call_for_per_sample_grads|gradient mismatch|save_invstd|batch_variance|instance norm"
+- description: NPU batch-norm integration violates the ATen contract by exposing CANN variance where PyTorch expects `save_invstd`, which breaks downstream gradient consumers such as per-sample-grad instance-norm paths and can produce reproducible gradient mismatches on NPU.
+- fix_summary: Convert CANN batch-norm outputs from variance to `1/sqrt(var+eps)` on the forward path, convert ATen `save_invstd` back to variance before CANN backward calls, and if a small residual conv-gradient drift remains during verification disable NPU HF32 convolution to match the CPU reference path.
+- validation: Rebuild and rerun the affected `instance_norm_model` NPU tests with default tolerances, then confirm the per-sample gradient mismatch disappears across the 1D, 2D, and 3D variants.
