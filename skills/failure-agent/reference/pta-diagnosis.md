@@ -213,7 +213,7 @@ Use the structured indexes after lightweight routing, not before it.
 Use [cann-api-reference](cann-api-reference.md) when the route is already on
 the CANN or ACLNN side and you only need index-specific interpretation.
 
-### When to read `reference/index/cann_error_index.yaml`
+### When to read `reference/index/cann_error_index.db`
 
 Read it when:
 
@@ -230,7 +230,7 @@ Interpretation hints:
 - internal or hardware style codes
   - check device health, stack compatibility, or kernel package state before blaming user code
 
-### When to read `reference/index/cann_aclnn_api_index.yaml`
+### When to read `reference/index/cann_aclnn_api_index.db`
 
 Read it when:
 
@@ -244,7 +244,7 @@ Use it to answer:
 - is the failing variant outside the current capability set
 - does the API contract imply a parameter, shape, or dtype misuse
 
-If the YAML index and the local evidence disagree, keep the local evidence as
+Use `scripts/query_cann_index.py` to query both DBs. If the DB index and the local evidence disagree, keep the local evidence as
 primary and downgrade confidence instead of forcing the index to win.
 
 ## Upstream PyTorch Baseline

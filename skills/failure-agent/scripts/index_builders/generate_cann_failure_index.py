@@ -1,4 +1,59 @@
-"""Generate minimal CANN failure indexes from source repositories."""
+"""Generate minimal CANN failure indexes from source repositories.
+
+Default manual command:
+    Run from the failure-agent directory. By default, the script clones the
+    configured CANN runtime and ops repositories into a temporary workspace and
+    writes SQLite indexes under reference/index.
+
+    python scripts/index_builders/generate_cann_failure_index.py \
+        --deterministic \
+        --with-error-yaml \
+        --with-aclnn-yaml
+
+Local source command:
+    Use local checkouts to avoid network clone. Pass exactly one runtime repo
+    and one or more ops repos. Repeat --local-ops-repo for each ops repository.
+
+    python scripts/index_builders/generate_cann_failure_index.py \
+        --local-runtime-repo D:/path/to/runtime \
+        --local-ops-repo D:/path/to/ops-nn \
+        --local-ops-repo D:/path/to/ops-math \
+        --deterministic \
+        --with-error-yaml \
+        --with-aclnn-yaml
+
+Parameters:
+    --workspace-root DIR
+        Temporary clone workspace used for remote builds. Default:
+        scripts/index_builders/.tmp/cann.
+    --out DIR
+        Output directory. Default: reference/index under failure-agent.
+    --local-runtime-repo DIR
+        Use a local CANN runtime repository instead of cloning the default
+        runtime remote. Default: unset.
+    --local-ops-repo DIR
+        Use a local CANN ops repository instead of cloning default ops remotes.
+        Can be passed multiple times. Default: unset.
+    --keep-workspace
+        Keep the temporary remote clone after the build. Default: delete it.
+    --with-error-yaml
+        Also write cann_error_index.yaml. Default: disabled.
+    --with-aclnn-yaml
+        Also write cann_aclnn_api_index.yaml. Default: disabled.
+    --with-source-docs
+        Also write source markdown documents copied/extracted from repos.
+        Default: disabled.
+    --with-compact
+        Also write aclnn_api_compact.md. Default: disabled.
+    --deterministic
+        Use deterministic metadata timestamps for reproducible outputs. Default:
+        use current UTC timestamp.
+
+Outputs:
+    Always writes cann_error_index.db and cann_aclnn_api_index.db. Optional
+    flags can additionally write YAML, source docs, and compact review artifacts
+    into --out.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +64,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -23,8 +79,10 @@ REFERENCE_DIR = FAILURE_AGENT_ROOT / "reference" / "index"
 ACL_DOC_PATH = REFERENCE_DIR / "aclError.md"
 ACLNN_DOC_PATH = REFERENCE_DIR / "aclnnApiError.md"
 ERROR_INDEX_PATH = REFERENCE_DIR / "cann_error_index.yaml"
+ERROR_DB_PATH = REFERENCE_DIR / "cann_error_index.db"
 LEGACY_API_DOCS_DIR = REFERENCE_DIR / "aclnn_api_docs"
 INDEX_FILE = REFERENCE_DIR / "cann_aclnn_api_index.yaml"
+INDEX_DB_FILE = REFERENCE_DIR / "cann_aclnn_api_index.db"
 COMPACT_FILE = REFERENCE_DIR / "aclnn_api_compact.md"
 WORKSPACE_DEFAULT = SCRIPT_DIR / ".tmp" / "cann"
 MANIFEST_NAME = "sources.json"
@@ -41,6 +99,7 @@ OPS_REPOS = [
 ]
 SPECIAL_RENAMES: dict[str, tuple[Path, str]] = {
     "aclnnApiError.md": (REFERENCE_DIR, "aclnnApiError.md"),
+    "aclnn返回码.md": (REFERENCE_DIR, "aclnnApiError.md"),
     "aclnn返回码.md": (REFERENCE_DIR, "aclnnApiError.md"),
     "aclnn杩斿洖鐮?md": (REFERENCE_DIR, "aclnnApiError.md"),
 }
@@ -77,6 +136,23 @@ def safe_rmtree(path: Path) -> None:
         shutil.rmtree(path, onerror=_force_remove_readonly)
 
 
+def safe_unlink(path: Path) -> None:
+    if not path.exists():
+        return
+    for _ in range(5):
+        try:
+            path.unlink()
+            return
+        except PermissionError:
+            time.sleep(0.2)
+        except FileNotFoundError:
+            return
+    try:
+        path.unlink()
+    except (PermissionError, FileNotFoundError):
+        return
+
+
 def prune_empty_parents(path: Path, *, stop_at: Path) -> None:
     current = path
     stop_at = stop_at.resolve()
@@ -98,6 +174,36 @@ def current_timestamp(*, deterministic: bool = False) -> str:
     if deterministic:
         return DETERMINISTIC_TIMESTAMP
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def json_dump_text(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=False)
+
+
+def json_load_list(value: str | None) -> list[object]:
+    if not value:
+        return []
+    loaded = json.loads(value)
+    return list(loaded) if isinstance(loaded, list) else []
+
+
+def initialize_sqlite_pragmas(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        PRAGMA journal_mode = OFF;
+        PRAGMA synchronous = OFF;
+        PRAGMA temp_store = MEMORY;
+        PRAGMA foreign_keys = OFF;
+        """
+    )
+
+
+def normalize_sqlite_header_for_determinism(db_path: Path) -> None:
+    fixed_value = (1).to_bytes(4, "big")
+    with db_path.open("r+b") as handle:
+        for offset in (24, 40, 92):
+            handle.seek(offset)
+            handle.write(fixed_value)
 
 
 def run_git(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
@@ -134,13 +240,13 @@ def clone_or_update_repo(repo: dict[str, str], workspace_root: Path) -> Path | N
     workspace_root.mkdir(parents=True, exist_ok=True)
     dest = workspace_root / repo["name"]
     safe_rmtree(dest)
-    result = run_git(["-c", "core.longpaths=true", "clone", "--depth", "1", repo["https"], str(dest)])
+    result = run_git(["-c", "core.longpaths=true", "clone", "--depth", "1", "--no-tags", repo["https"], str(dest)])
     if result.returncode == 0:
         print(f"[OK] {repo['name']} cloned via HTTPS.")
         return dest
     print(f"[WARN] HTTPS clone failed for {repo['name']}: {result.stderr.strip()}")
     safe_rmtree(dest)
-    result = run_git(["-c", "core.longpaths=true", "clone", "--depth", "1", repo["ssh"], str(dest)])
+    result = run_git(["-c", "core.longpaths=true", "clone", "--depth", "1", "--no-tags", repo["ssh"], str(dest)])
     if result.returncode == 0:
         print(f"[OK] {repo['name']} cloned via SSH.")
         return dest
@@ -225,9 +331,17 @@ def prepare_input_docs(
         commit = str(repo.get("commit", "unknown"))
         repo_infos.append({"name": repo_name, "branch": branch, "commit": commit})
         for src in sorted(repo_path.rglob("aclnn*.md")):
-            if src.name in SPECIAL_RENAMES:
-                dest_dir, dest_name = SPECIAL_RENAMES[src.name]
-                write_source_markdown(src, dest_dir / dest_name, repo_name, branch, commit)
+            rename_target = None
+            if src.name == "aclnn返回码.md":
+                rename_target = "aclnnApiError.md"
+            elif src.name in SPECIAL_RENAMES:
+                configured = SPECIAL_RENAMES[src.name]
+                if isinstance(configured, tuple):
+                    rename_target = str(configured[1])
+                else:
+                    rename_target = str(configured)
+            if rename_target:
+                write_source_markdown(src, REFERENCE_DIR / rename_target, repo_name, branch, commit)
                 continue
             docs.append({"path": src, "doc_name": src.name, "source_repo": repo_name})
     return docs, repo_infos
@@ -2355,7 +2469,7 @@ def build_index_meta(
     }
 
 
-def build_cann_error_index(meta: dict[str, object]) -> None:
+def build_cann_error_payload(meta: dict[str, object]) -> dict[str, object]:
     if not ACL_DOC_PATH.exists():
         raise FileNotFoundError(f"Missing source markdown: {ACL_DOC_PATH}")
     if not ACLNN_DOC_PATH.exists():
@@ -2364,7 +2478,7 @@ def build_cann_error_index(meta: dict[str, object]) -> None:
     acl_text = ACL_DOC_PATH.read_text(encoding="utf-8")
     aclnn_text = ACLNN_DOC_PATH.read_text(encoding="utf-8")
     entries = build_acl_entries(acl_text) + build_aclnn_error_entries(aclnn_text)
-    payload = {
+    return {
         "meta": {
             **meta,
             "entry_count": len(entries),
@@ -2375,12 +2489,10 @@ def build_cann_error_index(meta: dict[str, object]) -> None:
         },
         "entries": entries,
     }
-    write_yaml(ERROR_INDEX_PATH, payload)
-    print(f"[OK] Wrote {ERROR_INDEX_PATH.name}")
 
 
-def write_yaml_index(records: list[dict[str, object]], repo_infos: list[dict[str, str]], meta: dict[str, object]) -> None:
-    payload = {
+def build_aclnn_index_payload(records: list[dict[str, object]], repo_infos: list[dict[str, str]], meta: dict[str, object]) -> dict[str, object]:
+    return {
         "meta": {
             **meta,
             "api_count": len(records),
@@ -2388,8 +2500,566 @@ def write_yaml_index(records: list[dict[str, object]], repo_infos: list[dict[str
         "repositories": repo_infos,
         "apis": sorted(records, key=lambda item: str(item["api_name"])),
     }
-    INDEX_FILE.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
-    print(f"[OK] Wrote {INDEX_FILE.name}")
+
+
+def create_error_index_schema(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        PRAGMA foreign_keys = ON;
+        CREATE TABLE schema_meta (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            schema_version TEXT NOT NULL,
+            generator_name TEXT NOT NULL,
+            generator_version TEXT NOT NULL,
+            generated_at TEXT NOT NULL,
+            source_mode TEXT NOT NULL,
+            source_repo_url TEXT NOT NULL,
+            source_branch TEXT NOT NULL,
+            source_commit TEXT NOT NULL,
+            source_repository_count INTEGER NOT NULL,
+            entry_count INTEGER NOT NULL
+        );
+        CREATE TABLE source_repository (
+            repo_id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            repo_url TEXT NOT NULL,
+            branch TEXT NOT NULL,
+            commit_hash TEXT NOT NULL,
+            source_type TEXT NOT NULL
+        );
+        CREATE TABLE error_source (
+            source_kind TEXT PRIMARY KEY,
+            repo TEXT NOT NULL,
+            branch TEXT NOT NULL,
+            commit_hash TEXT NOT NULL,
+            document_name TEXT NOT NULL
+        );
+        CREATE TABLE error_entry (
+            entry_id INTEGER PRIMARY KEY,
+            ordinal INTEGER NOT NULL,
+            scope TEXT NOT NULL,
+            code INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            meaning TEXT NOT NULL,
+            solution TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX idx_error_entry_ordinal ON error_entry(ordinal);
+        CREATE INDEX idx_error_entry_code ON error_entry(code);
+        CREATE INDEX idx_error_entry_name ON error_entry(name);
+        """
+    )
+
+
+def write_error_index_db(db_path: Path, payload: dict[str, object], *, deterministic: bool) -> None:
+    conn = sqlite3.connect(db_path)
+    try:
+        initialize_sqlite_pragmas(conn)
+        conn.executescript(
+            """
+            DROP TABLE IF EXISTS error_entry;
+            DROP TABLE IF EXISTS error_source;
+            DROP TABLE IF EXISTS source_repository;
+            DROP TABLE IF EXISTS schema_meta;
+            """
+        )
+        conn.execute("VACUUM")
+        create_error_index_schema(conn)
+        meta = payload["meta"]
+        conn.execute(
+            """
+            INSERT INTO schema_meta(
+                id, schema_version, generator_name, generator_version, generated_at,
+                source_mode, source_repo_url, source_branch, source_commit,
+                source_repository_count, entry_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                1,
+                str(meta["index_schema_version"]),
+                str(meta["generator_name"]),
+                str(meta["generator_version"]),
+                str(meta["generated_at"]),
+                str(meta["source_mode"]),
+                str(meta["source_repo_url"]),
+                str(meta["source_branch"]),
+                str(meta["source_commit"]),
+                int(meta["source_repository_count"]),
+                int(meta["entry_count"]),
+            ),
+        )
+        conn.executemany(
+            """
+            INSERT INTO source_repository(repo_id, name, repo_url, branch, commit_hash, source_type)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    idx + 1,
+                    str(item.get("name", "")),
+                    str(item.get("repo_url", "")),
+                    str(item.get("branch", "")),
+                    str(item.get("commit", "")),
+                    str(item.get("source_type", "")),
+                )
+                for idx, item in enumerate(meta.get("source_repositories", []))
+            ],
+        )
+        sources = payload.get("sources", {})
+        for source_kind in ("acl", "aclnn"):
+            item = dict(sources.get(source_kind, {}))
+            conn.execute(
+                """
+                INSERT INTO error_source(source_kind, repo, branch, commit_hash, document_name)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    source_kind,
+                    str(item.get("repo", "")),
+                    str(item.get("branch", "")),
+                    str(item.get("commit", "")),
+                    str(item.get("document", "")),
+                ),
+            )
+        conn.executemany(
+            """
+            INSERT INTO error_entry(entry_id, ordinal, scope, code, name, meaning, solution)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    idx + 1,
+                    idx,
+                    str(item.get("scope", "")),
+                    int(item.get("code", 0)),
+                    str(item.get("name", "")),
+                    str(item.get("meaning", "")),
+                    str(item.get("solution", "")),
+                )
+                for idx, item in enumerate(payload.get("entries", []))
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    if deterministic:
+        normalize_sqlite_header_for_determinism(db_path)
+
+
+def load_error_index_payload_from_db(db_path: Path) -> dict[str, object]:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        meta_row = conn.execute("SELECT * FROM schema_meta WHERE id = 1").fetchone()
+        if meta_row is None:
+            raise RuntimeError(f"schema_meta is empty: {db_path}")
+        source_repositories = [
+            {
+                "name": str(row["name"]),
+                "repo_url": str(row["repo_url"]),
+                "branch": str(row["branch"]),
+                "commit": str(row["commit_hash"]),
+                "source_type": str(row["source_type"]),
+            }
+            for row in conn.execute("SELECT * FROM source_repository ORDER BY repo_id").fetchall()
+        ]
+        sources = {
+            str(row["source_kind"]): {
+                "repo": str(row["repo"]),
+                "branch": str(row["branch"]),
+                "commit": str(row["commit_hash"]),
+                "document": str(row["document_name"]),
+            }
+            for row in conn.execute("SELECT * FROM error_source ORDER BY source_kind").fetchall()
+        }
+        entries = [
+            {
+                "scope": str(row["scope"]),
+                "code": int(row["code"]),
+                "name": str(row["name"]),
+                "meaning": str(row["meaning"]),
+                "solution": str(row["solution"]),
+            }
+            for row in conn.execute("SELECT * FROM error_entry ORDER BY ordinal").fetchall()
+        ]
+        return {
+            "meta": {
+                "generated_at": str(meta_row["generated_at"]),
+                "generator_name": str(meta_row["generator_name"]),
+                "generator_version": str(meta_row["generator_version"]),
+                "index_schema_version": str(meta_row["schema_version"]),
+                "source_mode": str(meta_row["source_mode"]),
+                "source_repo_url": str(meta_row["source_repo_url"]),
+                "source_branch": str(meta_row["source_branch"]),
+                "source_commit": str(meta_row["source_commit"]),
+                "source_repository_count": int(meta_row["source_repository_count"]),
+                "source_repositories": source_repositories,
+                "entry_count": int(meta_row["entry_count"]),
+            },
+            "sources": sources,
+            "entries": entries,
+        }
+    finally:
+        conn.close()
+
+
+def create_aclnn_index_schema(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        PRAGMA foreign_keys = ON;
+        CREATE TABLE schema_meta (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            schema_version TEXT NOT NULL,
+            generator_name TEXT NOT NULL,
+            generator_version TEXT NOT NULL,
+            generated_at TEXT NOT NULL,
+            source_mode TEXT NOT NULL,
+            source_repo_url TEXT NOT NULL,
+            source_branch TEXT NOT NULL,
+            source_commit TEXT NOT NULL,
+            source_repository_count INTEGER NOT NULL,
+            api_count INTEGER NOT NULL
+        );
+        CREATE TABLE source_repository (
+            repo_id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            repo_url TEXT NOT NULL,
+            branch TEXT NOT NULL,
+            commit_hash TEXT NOT NULL,
+            source_type TEXT NOT NULL
+        );
+        CREATE TABLE repository_summary (
+            repo_id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            branch TEXT NOT NULL,
+            commit_hash TEXT NOT NULL
+        );
+        CREATE TABLE api (
+            api_id INTEGER PRIMARY KEY,
+            api_name TEXT NOT NULL UNIQUE,
+            source_repo TEXT NOT NULL,
+            workspace_api TEXT NOT NULL,
+            execute_api TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            extraction_status TEXT NOT NULL
+        );
+        CREATE TABLE api_doc_name (
+            api_id INTEGER NOT NULL,
+            ordinal INTEGER NOT NULL,
+            doc_name TEXT NOT NULL,
+            PRIMARY KEY (api_id, ordinal),
+            FOREIGN KEY (api_id) REFERENCES api(api_id) ON DELETE CASCADE
+        );
+        CREATE TABLE api_constraint (
+            api_id INTEGER NOT NULL,
+            ordinal INTEGER NOT NULL,
+            value_text TEXT NOT NULL,
+            PRIMARY KEY (api_id, ordinal),
+            FOREIGN KEY (api_id) REFERENCES api(api_id) ON DELETE CASCADE
+        );
+        CREATE TABLE api_error_condition (
+            api_id INTEGER NOT NULL,
+            ordinal INTEGER NOT NULL,
+            value_text TEXT NOT NULL,
+            PRIMARY KEY (api_id, ordinal),
+            FOREIGN KEY (api_id) REFERENCES api(api_id) ON DELETE CASCADE
+        );
+        CREATE TABLE api_return_code (
+            api_id INTEGER NOT NULL,
+            ordinal INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            code TEXT NOT NULL,
+            description TEXT NOT NULL,
+            PRIMARY KEY (api_id, ordinal),
+            FOREIGN KEY (api_id) REFERENCES api(api_id) ON DELETE CASCADE
+        );
+        CREATE TABLE api_evidence (
+            api_id INTEGER NOT NULL,
+            ordinal INTEGER NOT NULL,
+            value_text TEXT NOT NULL,
+            PRIMARY KEY (api_id, ordinal),
+            FOREIGN KEY (api_id) REFERENCES api(api_id) ON DELETE CASCADE
+        );
+        CREATE TABLE api_param (
+            api_id INTEGER NOT NULL,
+            param_kind TEXT NOT NULL,
+            ordinal INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL,
+            description TEXT NOT NULL,
+            dtype TEXT NOT NULL,
+            noncontiguous TEXT NOT NULL,
+            tensor_rank TEXT NOT NULL,
+            layout_templates_json TEXT NOT NULL,
+            shape_constraints_json TEXT NOT NULL,
+            value_constraints_json TEXT NOT NULL,
+            optional_semantics_json TEXT NOT NULL,
+            output_relation_json TEXT NOT NULL,
+            PRIMARY KEY (api_id, param_kind, ordinal),
+            FOREIGN KEY (api_id) REFERENCES api(api_id) ON DELETE CASCADE
+        );
+        CREATE INDEX idx_api_workspace_api ON api(workspace_api);
+        CREATE INDEX idx_api_execute_api ON api(execute_api);
+        CREATE INDEX idx_api_source_repo ON api(source_repo);
+        CREATE INDEX idx_return_code_code ON api_return_code(code);
+        """
+    )
+
+
+def _insert_text_rows(conn: sqlite3.Connection, table: str, api_id: int, values: list[object]) -> None:
+    if not values:
+        return
+    conn.executemany(
+        f"INSERT INTO {table}(api_id, ordinal, value_text) VALUES (?, ?, ?)",
+        [(api_id, ordinal, str(value)) for ordinal, value in enumerate(values)],
+    )
+
+
+def write_aclnn_index_db(db_path: Path, payload: dict[str, object], *, deterministic: bool) -> None:
+    conn = sqlite3.connect(db_path)
+    try:
+        initialize_sqlite_pragmas(conn)
+        conn.executescript(
+            """
+            DROP TABLE IF EXISTS api_param;
+            DROP TABLE IF EXISTS api_evidence;
+            DROP TABLE IF EXISTS api_return_code;
+            DROP TABLE IF EXISTS api_error_condition;
+            DROP TABLE IF EXISTS api_constraint;
+            DROP TABLE IF EXISTS api_doc_name;
+            DROP TABLE IF EXISTS api;
+            DROP TABLE IF EXISTS repository_summary;
+            DROP TABLE IF EXISTS source_repository;
+            DROP TABLE IF EXISTS schema_meta;
+            """
+        )
+        conn.execute("VACUUM")
+        create_aclnn_index_schema(conn)
+        meta = payload["meta"]
+        conn.execute(
+            """
+            INSERT INTO schema_meta(
+                id, schema_version, generator_name, generator_version, generated_at,
+                source_mode, source_repo_url, source_branch, source_commit,
+                source_repository_count, api_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                1,
+                str(meta["index_schema_version"]),
+                str(meta["generator_name"]),
+                str(meta["generator_version"]),
+                str(meta["generated_at"]),
+                str(meta["source_mode"]),
+                str(meta["source_repo_url"]),
+                str(meta["source_branch"]),
+                str(meta["source_commit"]),
+                int(meta["source_repository_count"]),
+                int(meta["api_count"]),
+            ),
+        )
+        conn.executemany(
+            """
+            INSERT INTO source_repository(repo_id, name, repo_url, branch, commit_hash, source_type)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    idx + 1,
+                    str(item.get("name", "")),
+                    str(item.get("repo_url", "")),
+                    str(item.get("branch", "")),
+                    str(item.get("commit", "")),
+                    str(item.get("source_type", "")),
+                )
+                for idx, item in enumerate(meta.get("source_repositories", []))
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO repository_summary(repo_id, name, branch, commit_hash) VALUES (?, ?, ?, ?)",
+            [
+                (idx + 1, str(item.get("name", "")), str(item.get("branch", "")), str(item.get("commit", "")))
+                for idx, item in enumerate(payload.get("repositories", []))
+            ],
+        )
+        for api_id, record in enumerate(payload.get("apis", []), start=1):
+            conn.execute(
+                """
+                INSERT INTO api(api_id, api_name, source_repo, workspace_api, execute_api, summary, extraction_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    api_id,
+                    str(record.get("api_name", "")),
+                    str(record.get("source_repo", "")),
+                    str(record.get("workspace_api", "")),
+                    str(record.get("execute_api", "")),
+                    str(record.get("summary", "")),
+                    str(record.get("extraction_status", "")),
+                ),
+            )
+            conn.executemany(
+                "INSERT INTO api_doc_name(api_id, ordinal, doc_name) VALUES (?, ?, ?)",
+                [(api_id, ordinal, str(item)) for ordinal, item in enumerate(record.get("doc_names", []))],
+            )
+            _insert_text_rows(conn, "api_constraint", api_id, list(record.get("constraints", [])))
+            _insert_text_rows(conn, "api_error_condition", api_id, list(record.get("error_conditions", [])))
+            _insert_text_rows(conn, "api_evidence", api_id, list(record.get("evidence", [])))
+            conn.executemany(
+                """
+                INSERT INTO api_return_code(api_id, ordinal, name, code, description)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        api_id,
+                        ordinal,
+                        str(item.get("name", "")),
+                        str(item.get("code", "")),
+                        str(item.get("description", "")),
+                    )
+                    for ordinal, item in enumerate(record.get("return_codes", []))
+                ],
+            )
+            for param_kind in ("inputs", "outputs"):
+                for ordinal, item in enumerate(record.get(param_kind, []) or []):
+                    conn.execute(
+                        """
+                        INSERT INTO api_param(
+                            api_id, param_kind, ordinal, name, role, description, dtype, noncontiguous,
+                            tensor_rank, layout_templates_json, shape_constraints_json, value_constraints_json,
+                            optional_semantics_json, output_relation_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            api_id,
+                            "input" if param_kind == "inputs" else "output",
+                            ordinal,
+                            str(item.get("name", "")),
+                            str(item.get("role", "")),
+                            str(item.get("description", "")),
+                            str(item.get("dtype", "")),
+                            str(item.get("noncontiguous", "")),
+                            str(item.get("tensor_rank", "")),
+                            json_dump_text(list(item.get("layout_templates", []) or [])),
+                            json_dump_text(list(item.get("shape_constraints", []) or [])),
+                            json_dump_text(list(item.get("value_constraints", []) or [])),
+                            json_dump_text(list(item.get("optional_semantics", []) or [])),
+                            json_dump_text(list(item.get("output_relation", []) or [])),
+                        ),
+                    )
+        conn.commit()
+    finally:
+        conn.close()
+    if deterministic:
+        normalize_sqlite_header_for_determinism(db_path)
+
+
+def load_aclnn_index_payload_from_db(db_path: Path) -> dict[str, object]:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        meta_row = conn.execute("SELECT * FROM schema_meta WHERE id = 1").fetchone()
+        if meta_row is None:
+            raise RuntimeError(f"schema_meta is empty: {db_path}")
+        source_repositories = [
+            {
+                "name": str(row["name"]),
+                "repo_url": str(row["repo_url"]),
+                "branch": str(row["branch"]),
+                "commit": str(row["commit_hash"]),
+                "source_type": str(row["source_type"]),
+            }
+            for row in conn.execute("SELECT * FROM source_repository ORDER BY repo_id").fetchall()
+        ]
+        repositories = [
+            {
+                "name": str(row["name"]),
+                "branch": str(row["branch"]),
+                "commit": str(row["commit_hash"]),
+            }
+            for row in conn.execute("SELECT * FROM repository_summary ORDER BY repo_id").fetchall()
+        ]
+        apis = []
+        for row in conn.execute("SELECT * FROM api ORDER BY api_name").fetchall():
+            api_id = int(row["api_id"])
+            record: dict[str, object] = {
+                "api_name": str(row["api_name"]),
+                "doc_names": [str(item[0]) for item in conn.execute("SELECT doc_name FROM api_doc_name WHERE api_id = ? ORDER BY ordinal", (api_id,)).fetchall()],
+                "source_repo": str(row["source_repo"]),
+                "workspace_api": str(row["workspace_api"]),
+                "execute_api": str(row["execute_api"]),
+                "summary": str(row["summary"]),
+                "constraints": [str(item[0]) for item in conn.execute("SELECT value_text FROM api_constraint WHERE api_id = ? ORDER BY ordinal", (api_id,)).fetchall()],
+                "error_conditions": [str(item[0]) for item in conn.execute("SELECT value_text FROM api_error_condition WHERE api_id = ? ORDER BY ordinal", (api_id,)).fetchall()],
+                "return_codes": [
+                    {
+                        "name": str(item["name"]),
+                        "code": str(item["code"]),
+                        "description": str(item["description"]),
+                    }
+                    for item in conn.execute("SELECT name, code, description FROM api_return_code WHERE api_id = ? ORDER BY ordinal", (api_id,)).fetchall()
+                ],
+                "evidence": [str(item[0]) for item in conn.execute("SELECT value_text FROM api_evidence WHERE api_id = ? ORDER BY ordinal", (api_id,)).fetchall()],
+                "extraction_status": str(row["extraction_status"]),
+            }
+            for param_kind, field_name in (("input", "inputs"), ("output", "outputs")):
+                params = []
+                for item in conn.execute(
+                    """
+                    SELECT name, role, description, dtype, noncontiguous, tensor_rank,
+                           layout_templates_json, shape_constraints_json, value_constraints_json,
+                           optional_semantics_json, output_relation_json
+                    FROM api_param
+                    WHERE api_id = ? AND param_kind = ?
+                    ORDER BY ordinal
+                    """,
+                    (api_id, param_kind),
+                ).fetchall():
+                    param = {
+                        "name": str(item["name"]),
+                        "role": str(item["role"]),
+                    }
+                    if item["description"]:
+                        param["description"] = str(item["description"])
+                    if item["dtype"]:
+                        param["dtype"] = str(item["dtype"])
+                    if item["noncontiguous"]:
+                        param["noncontiguous"] = str(item["noncontiguous"])
+                    if item["tensor_rank"]:
+                        param["tensor_rank"] = str(item["tensor_rank"])
+                    for json_field, output_field in (
+                        ("layout_templates_json", "layout_templates"),
+                        ("shape_constraints_json", "shape_constraints"),
+                        ("value_constraints_json", "value_constraints"),
+                        ("optional_semantics_json", "optional_semantics"),
+                        ("output_relation_json", "output_relation"),
+                    ):
+                        loaded = json_load_list(str(item[json_field]))
+                        if loaded:
+                            param[output_field] = loaded
+                    params.append(param)
+                if params:
+                    record[field_name] = params
+            apis.append(record)
+        return {
+            "meta": {
+                "generated_at": str(meta_row["generated_at"]),
+                "generator_name": str(meta_row["generator_name"]),
+                "generator_version": str(meta_row["generator_version"]),
+                "index_schema_version": str(meta_row["schema_version"]),
+                "source_mode": str(meta_row["source_mode"]),
+                "source_repo_url": str(meta_row["source_repo_url"]),
+                "source_branch": str(meta_row["source_branch"]),
+                "source_commit": str(meta_row["source_commit"]),
+                "source_repository_count": int(meta_row["source_repository_count"]),
+                "source_repositories": source_repositories,
+                "api_count": int(meta_row["api_count"]),
+            },
+            "repositories": repositories,
+            "apis": apis,
+        }
+    finally:
+        conn.close()
 
 
 def write_compact_md(records: list[dict[str, object]], repo_infos: list[dict[str, str]]) -> None:
@@ -2577,23 +3247,43 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--local-runtime-repo", metavar="DIR")
     parser.add_argument("--local-ops-repo", metavar="DIR", action="append")
     parser.add_argument("--keep-workspace", action="store_true")
+    parser.add_argument("--with-error-yaml", action="store_true")
+    parser.add_argument("--with-aclnn-yaml", action="store_true")
     parser.add_argument("--with-source-docs", action="store_true")
     parser.add_argument("--with-compact", action="store_true")
     parser.add_argument("--deterministic", action="store_true")
     return parser.parse_args()
 
 
+def remove_legacy_outputs(out_dir: Path) -> None:
+    for legacy_name in (
+        "cann_error_index.db.tmp",
+        "cann_error_index.db.tmp-journal",
+        "cann_aclnn_api_index.db.tmp",
+        "cann_aclnn_api_index.db.tmp-journal",
+    ):
+        legacy = out_dir / legacy_name
+        if legacy.exists():
+            try:
+                legacy.unlink()
+            except OSError:
+                pass
+
+
 def main() -> None:
     args = parse_args()
     workspace_root = run_workspace_root(Path(args.workspace_root).resolve(), keep_workspace=args.keep_workspace)
-    global REFERENCE_DIR, ACL_DOC_PATH, ACLNN_DOC_PATH, ERROR_INDEX_PATH, INDEX_FILE, COMPACT_FILE
+    global REFERENCE_DIR, ACL_DOC_PATH, ACLNN_DOC_PATH, ERROR_INDEX_PATH, ERROR_DB_PATH, INDEX_FILE, INDEX_DB_FILE, COMPACT_FILE
     REFERENCE_DIR = Path(args.out).resolve()
     REFERENCE_DIR.mkdir(parents=True, exist_ok=True)
     ACL_DOC_PATH = REFERENCE_DIR / "aclError.md"
     ACLNN_DOC_PATH = REFERENCE_DIR / "aclnnApiError.md"
     ERROR_INDEX_PATH = REFERENCE_DIR / "cann_error_index.yaml"
+    ERROR_DB_PATH = REFERENCE_DIR / "cann_error_index.db"
     INDEX_FILE = REFERENCE_DIR / "cann_aclnn_api_index.yaml"
+    INDEX_DB_FILE = REFERENCE_DIR / "cann_aclnn_api_index.db"
     COMPACT_FILE = REFERENCE_DIR / "aclnn_api_compact.md"
+    remove_legacy_outputs(REFERENCE_DIR)
 
     source_mode = "remote"
     if args.local_runtime_repo:
@@ -2668,19 +3358,29 @@ def main() -> None:
             source_mode=source_mode,
             deterministic=args.deterministic,
         )
-        build_cann_error_index(meta)
-        write_yaml_index(records, repo_infos, meta)
+        error_payload = build_cann_error_payload(meta)
+        aclnn_payload = build_aclnn_index_payload(records, repo_infos, meta)
+        write_error_index_db(ERROR_DB_PATH, error_payload, deterministic=args.deterministic)
+        write_aclnn_index_db(INDEX_DB_FILE, aclnn_payload, deterministic=args.deterministic)
+        files = [str(ERROR_DB_PATH), str(INDEX_DB_FILE)]
+        if args.with_error_yaml:
+            write_yaml(ERROR_INDEX_PATH, load_error_index_payload_from_db(ERROR_DB_PATH))
+            print(f"[OK] Wrote {ERROR_INDEX_PATH.name}")
+            files.append(str(ERROR_INDEX_PATH))
+        if args.with_aclnn_yaml:
+            write_yaml(INDEX_FILE, load_aclnn_index_payload_from_db(INDEX_DB_FILE))
+            print(f"[OK] Wrote {INDEX_FILE.name}")
+            files.append(str(INDEX_FILE))
         if args.with_compact:
             write_compact_md(records, repo_infos)
         print_generation_stats(records)
         if not args.with_source_docs:
             if ACL_DOC_PATH.exists():
-                ACL_DOC_PATH.unlink()
+                safe_unlink(ACL_DOC_PATH)
             if ACLNN_DOC_PATH.exists():
-                ACLNN_DOC_PATH.unlink()
+                safe_unlink(ACLNN_DOC_PATH)
         if not args.with_compact and COMPACT_FILE.exists():
-            COMPACT_FILE.unlink()
-        files = [str(ERROR_INDEX_PATH), str(INDEX_FILE)]
+            safe_unlink(COMPACT_FILE)
         if args.with_source_docs:
             if ACL_DOC_PATH.exists():
                 files.append(str(ACL_DOC_PATH))
@@ -2694,8 +3394,11 @@ def main() -> None:
     finally:
         cleanup(remove_legacy_docs=True)
         if not args.keep_workspace:
-            safe_rmtree(workspace_root)
-            prune_empty_parents(workspace_root.parent, stop_at=SCRIPT_DIR)
+            try:
+                safe_rmtree(workspace_root)
+                prune_empty_parents(workspace_root.parent, stop_at=SCRIPT_DIR)
+            except PermissionError:
+                pass
 
 
 if __name__ == "__main__":

@@ -144,8 +144,12 @@ Validate in this default order:
    - `reference/mindspore-api-reference.md`
    - `reference/mindspore-diagnosis.md`
    - `reference/cann-api-reference.md`
-3. use `reference/index/*.yaml` to confirm code families, API mapping, and capability or contract signals
+3. use the structured runtime indexes to confirm code families, API mapping, and capability or contract signals
+   - use `scripts/query_cann_index.py` with `reference/index/cann_error_index.db` for CANN error-code routing
+   - use `scripts/query_cann_index.py` with `reference/index/cann_aclnn_api_index.db` for ACLNN API contract checks
+   - use `scripts/query_mint_api_index.py` with `reference/index/mint_api_index.db` for explicit `mindspore.mint*` failures
 4. keep local traceback, logs, and artifacts primary if the index and local evidence disagree
+5. if the user provides a MindSpore version, commit, branch, or local MindSpore source tree and the built-in mint index does not match it, regenerate a fresh `mint_api_index.db` before relying on static mint index conclusions
 
 Return ranked root-cause candidates with:
 
@@ -240,33 +244,47 @@ Load these references when needed:
 - `reference/mindspore-diagnosis.md`
 - `reference/cann-api-reference.md`
 - `reference/failure-showcase.md`
-- `reference/index/cann_error_index.yaml`
-- `reference/index/cann_aclnn_api_index.yaml`
-- `reference/index/mint_api_index.yaml`
+- `reference/index/cann_error_index.db`
+- `reference/index/cann_aclnn_api_index.db`
+- `scripts/query_cann_index.py`
+- `reference/index/mint_api_index.db`
 - `reference/index/mint_api_methodology.md`
 
 Read them in this order by default:
 
 1. `reference/failure-showcase.md`
-2. `reference/index/cann_error_index.yaml`
-3. `reference/index/cann_aclnn_api_index.yaml`
+2. `reference/index/cann_error_index.db`
+3. `reference/index/cann_aclnn_api_index.db`
 
 Prefer reading these when the failure explicitly lands in `mindspore.mint`,
 `mindspore.mint.nn`, or `mindspore.mint.nn.functional`:
 
-- `reference/index/mint_api_index.yaml`
+- `reference/index/mint_api_index.db`
+- `scripts/query_mint_api_index.py`
 - `reference/index/mint_api_methodology.md`
 
+When the user's active MindSpore version or commit is available, query
+`scripts/query_mint_api_index.py meta` first and compare it with the active
+environment before trusting mint index conclusions.
+
+If the user also provides a local MindSpore checkout, or enough version or
+commit information to obtain the matching source tree, regenerate the mint
+index with `scripts/index_builders/generate_mindspore_failure_index.py` and use
+that regenerated `mint_api_index.db` as the current-session truth source.
+
 Optional raw source-doc outputs such as `aclError.md`, `aclnnApiError.md`,
-`mint_api_evidence.yaml`, and review artifacts are maintenance-side files. Do
-not treat them as default runtime dependencies.
+optional CANN YAML exports, `mint_api_evidence.yaml`, review artifacts, and
+optional `mint_api_index.yaml` exports are maintenance-side files. Do not treat
+them as default runtime dependencies.
 
 ## Scripts
 
 Use these helper scripts when useful:
 
 - `scripts/collect_failure_context.py`
+- `scripts/query_cann_index.py`
 - `scripts/summarize_traceback.py`
+- `scripts/query_mint_api_index.py`
 
 Index generation is maintained with:
 

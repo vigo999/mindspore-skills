@@ -8,3 +8,4 @@ __pycache__/
 
 # failure-agent builder workspaces
 skills/failure-agent/scripts/index_builders/.tmp/
+mindspore

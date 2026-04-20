@@ -4,8 +4,9 @@ Use this file as a lightweight reminder for Ascend operator/API-side diagnosis.
 
 Default structured inputs live in:
 
-- `reference/index/cann_error_index.yaml`
-- `reference/index/cann_aclnn_api_index.yaml`
+- `reference/index/cann_error_index.db`
+- `reference/index/cann_aclnn_api_index.db`
+- `scripts/query_cann_index.py`
 
 Optional maintenance-side raw docs may also exist when explicitly generated:
 
@@ -27,7 +28,7 @@ Use [pta-diagnosis](pta-diagnosis.md) for quick mixed-device, async, or
 distributed routing first; keep this file focused on CANN or ACLNN-side index
 interpretation.
 Do not use raw markdown or source-doc outputs as the default first read; the
-structured YAML indexes are the primary runtime inputs.
+structured SQLite indexes are the primary runtime inputs.
 
 ## ACLNN Two-Phase Pattern
 
@@ -58,21 +59,23 @@ High-value mappings:
 - distinguish compile-time TBE failures from runtime ACLNN failures
 - keep operator shape and dtype constraints explicit when reproducing
 
-## YAML Index Usage
+## DB Index Usage
 
-Use `reference/index/cann_error_index.yaml` when you need:
+Use `reference/index/cann_error_index.db` through `scripts/query_cann_index.py`
+when you need:
 
 - direct mapping from stable runtime or CANN codes to an error family
 - a quick split between parameter, runtime, and internal classes
 - a fast decision on whether to stay in environment, distributed, memory, or backend routing
 
-Use `reference/index/cann_aclnn_api_index.yaml` when you need:
+Use `reference/index/cann_aclnn_api_index.db` through `scripts/query_cann_index.py`
+when you need:
 
 - the expected ACLNN interface name or capability family
 - hints about parameter or contract mismatches for a specific ACLNN path
 - confirmation that the failing operator variant belongs to a real interface or kernel-package gap
 
-If the YAML entry and local failure evidence disagree, keep the local failure
+If the DB entry and local failure evidence disagree, keep the local failure
 evidence primary and treat the index as supporting evidence rather than a
 replacement.
 
@@ -82,5 +85,8 @@ replacement.
 - use [backend-diagnosis](backend-diagnosis.md) for broader layer triage
 - use [mindspore-diagnosis](mindspore-diagnosis.md) if source-level investigation is needed
 
-Prefer the YAML indexes first. Only read the optional markdown sources when the
-structured entries are insufficient for the current diagnosis.
+Prefer the DB indexes first. Query `meta` to see the static snapshot source and
+version provenance. If the snapshot obviously does not match the user's current
+environment, lower confidence rather than trying to rebuild it. Only read the
+optional markdown sources when the structured entries are insufficient for the
+current diagnosis.

@@ -207,13 +207,23 @@ Rules:
 - if the failure is in `mindspore.ops.*` or `mindspore.nn.*`, prefer the general MindSpore route first
 - if `nn` module setup fails before the first real op launch, treat it as API or configuration validation first
 
-### When to read `reference/index/mint_api_index.yaml`
+### When to query `reference/index/mint_api_index.db`
 
-Read the YAML index when:
+Query the SQLite index when:
 
 - the failure explicitly mentions `mindspore.mint`, `mindspore.mint.nn`, or `mindspore.mint.nn.functional`
 - you need to decide whether a `mint` API maps directly to one lower-layer call, several possible lower-layer calls, or wrapper-only logic
 - you need `mint`-specific wrapper or support hints before going to source
+
+Use `scripts/query_mint_api_index.py` as the read-only query entrypoint. If the
+database is missing or `sqlite3` is unavailable, skip the `mint` index query
+and continue with the general MindSpore route.
+
+If the user's active MindSpore version, commit, branch, or local MindSpore
+source tree is available and it does not match the static DB snapshot, rebuild
+`mint_api_index.db` with
+`scripts/index_builders/generate_mindspore_failure_index.py` against that
+matching source before relying on mint index facts.
 
 ### When to read `reference/index/mint_api_methodology.md`
 
@@ -223,7 +233,7 @@ Read the methodology note when:
 - you need to interpret trust rather than collect more raw facts
 - you need to know whether a missing direct mapping means unsupported, wrapper-only, or not-applicable inside `mint`
 
-Do not keep guessing support from the YAML alone when the methodology note says
+Do not keep guessing support from the index alone when the methodology note says
 the record is inherited or scenario-dependent.
 
 If the failure is rooted in `mindspore.ops`, `mindspore.nn`, infer, compiler,
