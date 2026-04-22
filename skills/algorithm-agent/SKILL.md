@@ -1,6 +1,6 @@
 ---
 name: algorithm-agent
-description: Adapt a paper feature, released reference implementation, or user-described algorithm change such as manifold-constrained hyper-connections (mHC) or Attention Residuals (AttnRes) into an existing model codebase, generate the minimal patch, and hand the updated workspace to readiness validation.
+description: Adapt a paper feature, released reference implementation, or user-described algorithm change such as manifold-constrained hyper-connections (mHC), Attention Residuals (AttnRes), or TransMLA into an existing model codebase, generate the minimal patch, and hand the updated workspace to readiness validation.
 ---
 
 # Algorithm Agent
@@ -12,7 +12,7 @@ a user request, plan how it should be integrated into the current model
 codebase, generate the minimal patch, and hand the result to readiness
 validation.
 
-This skill is the top-level algorithm feature entry. The user should not need to choose up front whether the case is a generic feature patch or a specialized route such as mHC integration or Attention Residuals integration.
+This skill is the top-level algorithm feature entry. The user should not need to choose up front whether the case is a generic feature patch or a specialized route such as mHC integration, Attention Residuals integration, or TransMLA integration.
 
 This skill is for adapting local algorithm changes into an existing training
 codebase. It is not for full model migration, operator development, post-run
@@ -37,19 +37,27 @@ Do not use this skill for:
 
 ## Workflow
 
-Run the workflow in this order:
+Discovery and intake requests may stop after a bounded shortlist or triage result.
+Use that path for requests such as trending papers, candidate shortlists, or DeepXiv-assisted triage.
+Those discovery-only requests may emit `paper_candidates` and recommended next actions, but must not imply integration planning, patch generation, or code changes.
+
+Run the integration workflow in this order:
 
 1. `feature-analyzer`
 2. `integration-planner`
 3. `patch-builder`
 4. `readiness-handoff-and-report`
 
+An optional bounded intake pre-stage may be used before this live patch flow for triage and entry decisions; once intake passes, execution returns to the four-stage patch path using `references/intake-prestage-and-triage.md`, `references/intake-prestage-verification-and-admission.md`, and `scripts/intake_prestage_artifact_helper.py`.
+
 Do not skip directly to patch generation.
+Do not turn route selection into a fifth workflow stage.
 
 ## Stage 1. Feature Analyzer
 
 Understand the requested feature before planning code changes.
 
+Load `references/feature-analysis.md` for the shared feature-extraction baseline.
 You must identify:
 
 - the feature or trick summary
@@ -75,6 +83,7 @@ Choose exactly one integration route:
 - `generic-feature`
 - `mhc`
 - `attnres`
+- `transmla`
 
 Use these routing priorities:
 
@@ -93,6 +102,10 @@ Residuals, AttnRes, block attention residuals, replacing residual add with
 depth attention, cross-layer residual retrieval, or the Moonshot/Kimi
 Attention Residuals paper and code.
 
+Select `transmla` when the request or evidence mentions TransMLA, MLA
+conversion, converting GQA-style decoder models toward MLA-style attention,
+or attention / KV-cache conversion for Qwen-like causal LLMs.
+
 Use `generic-feature` for all other feature adaptations.
 
 Build a structured `FeatureSpec` that includes `integration_route` and
@@ -101,6 +114,8 @@ Build a structured `FeatureSpec` that includes `integration_route` and
 ## Stage 2. Integration Planner
 
 Plan how the feature should fit into the current codebase.
+
+Load `references/integration-planning.md` for the shared planning baseline.
 
 You must inspect the local repository and determine:
 
@@ -114,13 +129,20 @@ You must inspect the local repository and determine:
 - route-specific constraints that must be preserved
 - route-specific validations that must run before handoff
 
-Build an `IntegrationPlan` that records `route_specific_constraints` and
-`route_specific_validations`.
+Build an `IntegrationPlan` that records `route_specific_constraints`,
+`route_specific_validations`, and `code_map_summary`.
 
 ### `generic-feature` route
 
 Use the default planning flow for recipe, module, system, or hybrid feature
 patches that do not need a specialized route pack.
+
+For `generic-feature`, use the shared references directly:
+
+- `references/feature-analysis.md`
+- `references/integration-planning.md`
+- `references/patching-rules.md`
+- `references/handoff-and-report.md`
 
 ### `mhc` route
 
@@ -165,9 +187,36 @@ Route rules:
 - Record the route-specific constraints and validations in the
   `IntegrationPlan` instead of inventing a fifth workflow stage.
 
+### `transmla` route
+
+Keep the top-level workflow unchanged, but load the TransMLA references before
+finalizing the plan:
+
+- `references/transmla/transmla-implementation-pattern.md`
+- `references/transmla/transmla-validation-checklist.md`
+- `references/transmla/transmla-case-study.md`
+
+Route rules:
+
+- Treat TransMLA as an attention / KV-cache conversion case, not as a generic
+  adapter patch.
+- Keep v1 scope bounded and preserve baseline-off behavior unless the selected
+  proving scope explicitly replaces the original path.
+- Treat checkpoint-remap as a separate follow-on unless it is already part of
+  the bounded slice being proved.
+- Keep semantic-slice work separate from runtime/cache follow-ons.
+- Keep paged runtime, broader runtime orchestration, and fuller MLA semantics
+  as explicit non-claims unless later bounded work proves them.
+- Use the TransMLA references for implementation pattern, validation, and case
+  detail instead of expanding them inline in `SKILL.md`.
+- Record the route-specific constraints and validations in the
+  `IntegrationPlan` instead of inventing a fifth workflow stage.
+
 ## Stage 3. Patch Builder
 
 Generate the minimal implementation patch.
+
+Load `references/patching-rules.md` for the shared patch-generation baseline.
 
 You must:
 
@@ -184,9 +233,15 @@ When the selected route is `attnres`, preserve the baseline residual path,
 public hidden size, load and train entrypoints, and route-pack constraints on
 registered mixer modules, checkpoint loading, and logical-site accounting.
 
+When the selected route is `transmla`, preserve the bounded proving-case goal,
+keep success wording narrow, and avoid implying fuller MLA semantics, broader
+runtime integration, or paged runtime support unless explicitly proven.
+
 ## Stage 4. Readiness Handoff and Report
 
 Do not stop after generating the patch.
+
+Load `references/handoff-and-report.md` for the shared handoff baseline.
 
 You must:
 
@@ -197,7 +252,8 @@ You must:
 - prepare a concise handoff for `readiness-agent`
 
 The handoff should preserve the route identity, including route-specific
-constraints and validation expectations when `mhc` was selected.
+constraints and validation expectations when `mhc`, `attnres`, or `transmla`
+was selected.
 
 ## References
 
@@ -213,6 +269,9 @@ Load these references when needed:
 - `references/attnres/attnres-implementation-pattern.md`
 - `references/attnres/attnres-validation-checklist.md`
 - `references/attnres/attnres-qwen3-case-study.md`
+- `references/transmla/transmla-implementation-pattern.md`
+- `references/transmla/transmla-validation-checklist.md`
+- `references/transmla/transmla-case-study.md`
 
 ## Scripts
 

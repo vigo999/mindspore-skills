@@ -25,7 +25,7 @@
                    },
                    {
                        "name":  "algorithm-agent",
-                       "description":  "Adapt a paper feature or released reference implementation into an existing model codebase and prepare the patch for readiness validation",
+                       "description":  "Adapt a paper feature or released reference implementation into an existing model codebase, with support for paper intake/triage, released-code analysis, code-map generation, and patch planning before readiness validation",
                        "path":  "skills/algorithm-agent/SKILL.md"
                    },
                    {
