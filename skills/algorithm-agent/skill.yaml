@@ -1,8 +1,8 @@
 schema_version: "1.1.0"
 name: "algorithm-agent"
 display_name: "Algorithm Agent"
-version: "0.4.0"
-description: "Top-level algorithm feature agent that runs a paper-to-factory loop: intake and triage paper candidates, analyze released reference implementations, build a code map and patch plan, drive a minimum verification scaffold across torch/torch_npu/MindSpore expectations, and prepare validated results for readiness handoff and reusable template distillation."
+version: "0.4.1"
+description: "Top-level algorithm feature agent that supports bounded paper discovery and intake triage for shortlist requests, and otherwise analyzes released reference implementations or user-described features to build a code map, patch plan, and readiness-oriented integration flow."
 type: "manual"
 path: "SKILL.md"
 network: "none"
@@ -39,6 +39,9 @@ inputs:
     choices: ["generic-feature", "mhc", "attnres", "transmla"]
 
 outputs:
+  - name: "paper_candidates"
+    type: object
+    description: Discovery-only shortlist or intake triage result for candidate papers or techniques.
   - name: "feature_spec"
     type: object
     description: Structured feature analysis and intake-triage result.
@@ -53,6 +56,9 @@ outputs:
     description: Suggested readiness validation handoff.
 
 report_schema:
+  paper_candidates:
+    required_fields: ["title", "source_url_or_source_name", "feature_summary", "integration_route_guess", "qualification_basis", "recommended_next_action"]
+    optional_fields: ["recency_or_source_status", "feature_bucket"]
   feature_spec:
     required_fields: ["feature_summary", "source_type", "feature_category", "integration_route", "route_evidence", "feature_bucket", "qualification_basis", "source_status", "recommended_next_action"]
   integration_plan:
@@ -63,4 +69,4 @@ report_schema:
     required_fields: ["route", "open_questions", "recommended_checks", "verification_scaffold", "preliminary_handoff_target"]
 
 out_dir_layout:
-  notes: "Prefer the smallest coherent artifact footprint in the bounded intake pre-stage: keep intake+routing guidance together, keep verification+admission guidance together, default to one combined helper scaffold, and only split files when reuse clearly justifies it."
+  notes: "Prefer the smallest coherent artifact footprint in the bounded intake pre-stage: keep intake+routing guidance together, keep verification+admission guidance together, default to one combined helper scaffold, and only split files when reuse clearly justifies it. Discovery-only paper_candidates must not imply integration planning or patch generation."

@@ -57,11 +57,12 @@ If classification is ambiguous, ask the user to choose exactly one:
 
 After choosing the specialist skill:
 
-- analyze the source (paper, reference implementation, or user description)
-- present an integration plan with expected changes
-- wait for user confirmation before applying anything
-- apply changes incrementally with verification at each step
-- run tests and report results
+- for discovery or intake requests such as trending papers, candidate shortlists, or DeepXiv triage, return a bounded shortlist or triage result with recommended next actions
+- for integration requests, analyze the source (paper, reference implementation, or user description)
+- for integration requests, present an integration plan with expected changes
+- for integration requests, wait for user confirmation before applying anything
+- for integration requests, apply changes incrementally with verification at each step
+- for integration requests, run relevant validation and report results
 
 ## Usage
 

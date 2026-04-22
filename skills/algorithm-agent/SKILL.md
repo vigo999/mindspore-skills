@@ -37,7 +37,11 @@ Do not use this skill for:
 
 ## Workflow
 
-Run the workflow in this order:
+Discovery and intake requests may stop after a bounded shortlist or triage result.
+Use that path for requests such as trending papers, candidate shortlists, or DeepXiv-assisted triage.
+Those discovery-only requests may emit `paper_candidates` and recommended next actions, but must not imply integration planning, patch generation, or code changes.
+
+Run the integration workflow in this order:
 
 1. `feature-analyzer`
 2. `integration-planner`

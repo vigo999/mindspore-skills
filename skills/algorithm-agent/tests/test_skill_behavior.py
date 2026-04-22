@@ -6,6 +6,7 @@ SKILL_MD = ROOT / "SKILL.md"
 INTAKE_TRIAGE_MD = ROOT / "references" / "intake-prestage-and-triage.md"
 INTAKE_VERIFY_MD = ROOT / "references" / "intake-prestage-verification-and-admission.md"
 TRANSMLA_CASE_MD = ROOT / "references" / "transmla" / "transmla-case-study.md"
+INTEGRATE_MD = ROOT.parents[1] / "commands" / "integrate.md"
 
 
 def test_workflow_stages_are_present():
@@ -78,3 +79,37 @@ def test_intake_prestage_pipeline_rules_are_present():
     assert "- `partial`" in verify_text
 
     assert "intake -> reference-code map -> bounded patch scope -> focused verification" in transmla_case_text
+
+
+def test_trending_paper_request_uses_discovery_entry_rule():
+    text = SKILL_MD.read_text(encoding="utf-8")
+    integrate_text = INTEGRATE_MD.read_text(encoding="utf-8")
+
+    assert "Discovery and intake requests may stop after a bounded shortlist or triage result." in text
+    assert "Use that path for requests such as trending papers" in text
+    assert "trending paper" in integrate_text
+    assert "for discovery or intake requests such as trending papers" in integrate_text
+
+
+def test_deepxiv_triage_request_stays_discovery_only():
+    text = SKILL_MD.read_text(encoding="utf-8")
+    integrate_text = INTEGRATE_MD.read_text(encoding="utf-8")
+
+    assert "DeepXiv-assisted triage" in text
+    assert "must not imply integration planning, patch generation, or code changes" in text
+    assert "DeepXiv" in integrate_text
+    assert "bounded shortlist or triage result with recommended next actions" in integrate_text
+
+
+def test_normal_integration_request_keeps_four_stage_flow():
+    text = SKILL_MD.read_text(encoding="utf-8")
+    integrate_text = INTEGRATE_MD.read_text(encoding="utf-8")
+
+    assert "Run the integration workflow in this order:" in text
+    assert "1. `feature-analyzer`" in text
+    assert "2. `integration-planner`" in text
+    assert "3. `patch-builder`" in text
+    assert "4. `readiness-handoff-and-report`" in text
+    assert "for integration requests, present an integration plan with expected changes" in integrate_text
+    assert "for integration requests, apply changes incrementally with verification at each step" in integrate_text
+    assert "for integration requests, run relevant validation and report results" in integrate_text

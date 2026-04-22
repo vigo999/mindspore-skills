@@ -10,7 +10,7 @@ def test_manifest_contract_fields_present():
     assert 'schema_version: "1.1.0"' in text
     assert 'name: "algorithm-agent"' in text
     assert 'display_name: "Algorithm Agent"' in text
-    assert 'version: "0.4.0"' in text
+    assert 'version: "0.4.1"' in text
     assert 'type: "manual"' in text
     assert 'path: "SKILL.md"' in text
     assert 'network: "none"' in text
@@ -24,9 +24,13 @@ def test_manifest_declares_route_input_and_output_contract():
     assert 'name: "reference_code_path"' in text
     assert 'name: "route_preference"' in text
     assert 'choices: ["generic-feature", "mhc", "attnres", "transmla"]' in text
+    assert 'name: "paper_candidates"' in text
     assert 'report_schema' in text
     assert 'out_dir_layout' in text
+    assert '"integration_route_guess"' in text
     assert '"qualification_basis"' in text
+    assert '"recommended_next_action"' in text
+    assert 'optional_fields: ["recency_or_source_status", "feature_bucket"]' in text
     assert '"source_status"' in text
     assert '"reference_scope"' in text
     assert '"reference_commit_or_tag"' in text
