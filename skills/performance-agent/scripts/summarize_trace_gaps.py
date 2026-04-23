@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from perf_common import normalize_key, parse_number, read_json, stage_to_domain, write_json
 
+
+_MAX_TRACE_SIZE_BYTES = 500 * 1024 * 1024
 
 CATEGORY_RULES = [
     ("graph_compile", ("compile", "graph_build", "recompile", "build_graph")),
@@ -106,7 +109,8 @@ def default_trace_view_path(trace_root: Path) -> Path:
     matches = sorted(trace_root.glob("**/ASCEND_PROFILER_OUTPUT/trace_view.json"))
     if matches:
         return matches[0]
-    raise SystemExit(f"trace_view.json was not found under {trace_root}")
+    print(f"trace_view.json was not found under {trace_root}", file=sys.stderr)
+    raise SystemExit(1)
 
 
 def main() -> int:
@@ -117,9 +121,19 @@ def main() -> int:
     args = parser.parse_args()
 
     if not args.trace_root and not args.trace_json:
-        raise SystemExit("Either --trace-root or --trace-json is required.")
+        print("Either --trace-root or --trace-json is required.", file=sys.stderr)
+        raise SystemExit(1)
 
     trace_path = Path(args.trace_json).resolve() if args.trace_json else default_trace_view_path(Path(args.trace_root).resolve())
+    file_size = trace_path.stat().st_size
+    if file_size > _MAX_TRACE_SIZE_BYTES:
+        print(
+            f"Error: trace_view.json is {file_size / (1024**3):.1f} GB, "
+            f"exceeds {_MAX_TRACE_SIZE_BYTES / (1024**2):.0f} MB limit. "
+            f"Use a smaller trace or extract key events first.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
     events = iter_events(read_json(trace_path))
     summary = {
         "source_file": str(trace_path),

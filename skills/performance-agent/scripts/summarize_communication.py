@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -146,7 +147,8 @@ def main() -> int:
         matrix_path = matrix_path or inferred_matrix
 
     if not comm_path or not comm_path.exists():
-        raise SystemExit("communication.json was not found. Provide --communication-json or --trace-root with communication artifacts.")
+        print("communication.json was not found. Provide --communication-json or --trace-root with communication artifacts.", file=sys.stderr)
+        raise SystemExit(1)
 
     comm_records = flatten_records(read_json(comm_path))
     summary = summarize_records(comm_records)
@@ -171,6 +173,7 @@ def main() -> int:
             else "Communication does not currently dominate the exported evidence."
         ),
     }
+
     write_json(Path(args.output_json), report)
     print(json.dumps({"dominant_collective": report["dominant_collective"], "pressure": report["communication_pressure"]}, indent=2))
     return 0
