@@ -7,7 +7,7 @@ SKILL_MD = Path(__file__).resolve().parents[1] / "SKILL.md"
 def test_behavior_rules_require_baseline_and_divergence_reasoning():
     text = SKILL_MD.read_text(encoding="utf-8")
     assert "Establish a comparable baseline before making root-cause claims." in text
-    assert "Find the earliest meaningful divergence before suggesting fixes." in text
+    assert "Find the earliest meaningful divergence before suggesting fixes or naming root" in text
     assert "If there is no trusted baseline, say so explicitly" in text
     assert "Do not claim a fix is confirmed until the user verifies it." in text
     assert "Do not skip workflow stages." in text

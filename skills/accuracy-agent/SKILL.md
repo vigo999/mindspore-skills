@@ -55,7 +55,6 @@ These are non-negotiable invariants. Every rule applies at every stage.
 - Find the earliest meaningful divergence before suggesting fixes or naming root
   causes. If the divergence point is still unknown, reduce scope or build a
   targeted compare until you can name it.
-- Find the earliest meaningful divergence before suggesting fixes.
 - Treat implicit API parameter defaults as first-class evidence. Different
   frameworks often use different defaults for the same named parameter; aligning
   parameters is cheaper and more reliable than rewriting the operator.
@@ -93,8 +92,6 @@ Do not skip workflow stages.
 2. **Validate** — from the identified divergence, narrow and verify root cause
 3. **Report** — write diagnosis snapshot and human report
 4. **Fix** (`fix` mode only) — propose → confirm → apply → verify
-
-## Stage 1. Accuracy Analyzer
 
 ## Stage 1: Analyze
 
